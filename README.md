@@ -3,6 +3,8 @@ An quick test of multi-file compression with long paths and many duplicate files
 
 This is specifically pure .Net so it can be included in .msi installers.
 
+**Important** This tool does not keep track of file permissions, flags, creation dates or any other meta-data.
+
 ### To do
 
  * handle long file names
