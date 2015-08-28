@@ -1,0 +1,24 @@
+{
+  "name": "simple-compress",
+  "version": "0.0.0",
+  "description": "A simple compression agent with Node and .Net clients",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/i-e-b/SimpleCompress"
+  },
+  "keywords": [
+    "compression",
+    "commandline",
+    "tool"
+  ],
+  "author": "ieb",
+  "license": "BSD3",
+  "bugs": {
+    "url": "https://github.com/i-e-b/SimpleCompress/issues"
+  },
+  "homepage": "https://github.com/i-e-b/SimpleCompress"
+}
