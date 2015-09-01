@@ -4,33 +4,59 @@ var fs = require('fs');
 var zlib = require('zlib');
 var path = require('path');
 
-// to start with, unpack a presupplied filesystem:
-var inputFile = 'C:/Temp/sample.inpkg';
-var outputPath = 'C:/Temp/nodeOut/';
-var temp = inputFile + '.tmp';
+// pick out the args
+var args = process.argv.slice(2);
+if (args.length != 3) { ShowUsageAndExit(); }
 
-// Unzip archive to temp location
-if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
-var gzip = zlib.createGunzip();
-var inp = fs.createReadStream(inputFile);
-var out = fs.createWriteStream(temp);
+var src = path.resolve(args[1]);
+var dst = path.resolve(args[2]);
 
-console.log('decompressing');
-var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
+switch (args[0]) {
+    case "pack":
+        Pack(src, dst);
+        break;
 
-unzip.on('finish', function unzipCallback(){
-    if (inp.end) inp.end()
-    if (out.end) out.end();
+    case "unpack":
+        Unpack(src, dst);
+        break;
 
-    console.log('unpacking files');
-    unpack(temp, outputPath);
-    console.log('done');
-});
+    default:
+        ShowUsageAndExit();
+        break;
+}
+// end of main program
+
+function ShowUsageAndExit() {
+    console.log("Simple Compress\r    Usage:\r        sc pack <src directory> <target file>\r        sc unpack <src file> <target directory>");
+    process.exit(1);
+}
+
+// expand an existing package file into a directory structure
+function Unpack(src, dst) {
+    var temp = src + '.tmp';
+    // Unzip archive to temp location
+    if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
+    var gzip = zlib.createGunzip();
+    var inp = fs.createReadStream(src);
+    var out = fs.createWriteStream(temp);
+
+    console.log('decompressing');
+    var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
+
+    unzip.on('finish', function unzipCallback(){
+        if (inp.end) inp.end()
+            if (out.end) out.end();
+
+        console.log('unpacking files');
+        unpackCat(temp, dst);
+        console.log('done');
+    });
+}
 
 // then run this over the structure...
 // ToDo: see if this can be re-written as a single pipeline
 
-function unpack(srcPack, targetPath) {
+function unpackCat(srcPack, targetPath) {
     var cat = fs.openSync(srcPack, 'r');
     var buf = new Buffer(65536);
     var offset = 0;
@@ -46,6 +72,7 @@ function unpack(srcPack, targetPath) {
         ReadToFiles(fileLen, paths, targetPath, cat, buf);
     }
     fs.close(cat);
+    fs.unlinkSync(srcPack);
 }
 
 function ReadPaths(len, fd, buffer){
@@ -61,9 +88,9 @@ function ReadToFiles(len, paths, target, fd, buffer){
     var remains = len;
     // check directories and truncate files
     for (var i = 0; i < paths.length; i++){
-        var npath = target + paths[i];
+        var npath = path.join(target, paths[i]);
         ensureDirectory(path.dirname(npath));
-        fs.truncateSync(npath, 0);
+        if (fs.existsSync(npath)) {fs.truncateSync(npath, 0);}
     }
 
     // read bytes into files
@@ -75,48 +102,11 @@ function ReadToFiles(len, paths, target, fd, buffer){
 
         var data = buffer.slice(0, rlen);
         for (var i = 0; i < paths.length; i++){
-            var npath = target + paths[i];
+            var npath = path.join(target, paths[i]);
             fs.appendFileSync(npath, data);
         }
     }
 }
-
-// Helper to process two streams of work with callback IO
-//function ContinuationWorker(
-//    sourcePump/*function()=> data*/,
-//    targetPump/*function()=> [data]*/,
-//    fullyComplete/*callback for when source pump returns nothing*/,
-//    doWork/*function(sourceData, targetData, nextCallback)*/
-//    )/*:void*/ {
-//    var sourceItem = null;
-//    var targetItems = [];
-//    var output = []
-//
-//    var trampoline = function trampoline(err, result) {
-//        if (err) { // failed a step. All results considered unreliable.
-//            return fullyComplete(err, undefined);
-//        }
-//
-//        if (result) { // got something from the worker function
-//            output.push(result);
-//        }
-//
-//        if (sourceItem == null || sourceItem == undefined) { // work complete
-//            return fullyComplete(null, output);
-//        }
-//
-//        if (targetItems.length < 1) { // pump the source and targets then start again
-//            sourceItem = sourcePump();
-//            targetItems = targetPump();
-//            return trampoline(null, null);
-//        }
-//
-//        // do next work item
-//        var targetItem = targetItems.pop();
-//        return doWork(sourceItem, targetItem, trampoline.bind(this));
-//    };
-//    trampoline(null, null);
-//}
 
 function ReadLength(fd, buffer){
     var rlen = fs.readSync(fd, buffer, 0, 8, null);
@@ -128,7 +118,6 @@ function ReadLength(fd, buffer){
 // node's file system support is shocking
 function ensureDirectory (p) {
     p = path.resolve(p);
-
     try {
         fs.mkdirSync(p);
     } catch (err0) {
@@ -136,23 +125,16 @@ function ensureDirectory (p) {
             case 'ENOENT' :
                 ensureDirectory(path.dirname(p));
                 ensureDirectory(p);
-
                 break;
-
-            // In the case of any other error, just see if there's a dir
-            // there already.  If so, then hooray!  If not, then something
-            // is borked.
-            default:
-                var stat;
-                try {
-                    stat = fs.statSync(p);
-                } catch (err1) {
-                    throw err0;
-                }
+        default:
+            try {
+                var stat = fs.statSync(p);
                 if (!stat.isDirectory()) throw err0;
-                break;
+            } catch (err1) {
+                throw err0;
+            }
+            break;
         }
     }
 };
 
-//fs.read(fd, buffer, offset, length, position, function(err, bytesRead, buffer){});
