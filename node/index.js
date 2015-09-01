@@ -4,7 +4,6 @@ var fs = require('fs');
 var zlib = require('zlib');
 var path = require('path');
 
-// pick out the args
 var args = process.argv.slice(2);
 if (args.length != 3) { ShowUsageAndExit(); }
 
@@ -25,10 +24,23 @@ switch (args[0]) {
         break;
 }
 // end of main program
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function ShowUsageAndExit() {
     console.log("Simple Compress\r    Usage:\r        sc pack <src directory> <target file>\r        sc unpack <src file> <target directory>");
     process.exit(1);
+}
+
+// recursively scan a directorf and pack its contents into an archive
+function Pack(src, dst) {
+    var temp = src + '.tmp';
+    if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
+
+    // build dictionary of equal files
+    // open pack file
+    // write first data of each dict entry to cat file
+    // close and gzip the cat file
+    // delete cat file
 }
 
 // expand an existing package file into a directory structure
