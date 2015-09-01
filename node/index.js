@@ -3,6 +3,7 @@
 var fs = require('fs');
 var zlib = require('zlib');
 var path = require('path');
+var crypto = require('crypto')
 
 var args = process.argv.slice(2);
 if (args.length != 3) { ShowUsageAndExit(); }
@@ -41,6 +42,31 @@ function Pack(src, dst) {
     // write first data of each dict entry to cat file
     // close and gzip the cat file
     // delete cat file
+}
+
+// async hash of file.
+// TODO: convert to sync without having to read whole file.
+function fileHash (filename, callback) {
+  var sum = crypto.createHash('md5')
+  if (callback && typeof callback === 'function') {
+    var fileStream = fs.createReadStream(filename)
+    fileStream.on('error', function (err) {
+      return callback(err, null)
+    })
+    fileStream.on('data', function (chunk) {
+      try {
+        sum.update(chunk)
+      } catch (ex) {
+        return callback(ex, null)
+      }
+    })
+    fileStream.on('end', function () {
+      return callback(null, sum.digest('hex'))
+    })
+  } else {
+    sum.update(fs.readFileSync(filename))
+    return sum.digest('hex')
+  }
 }
 
 // expand an existing package file into a directory structure
