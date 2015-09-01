@@ -59,7 +59,14 @@ function ReadPaths(len, fd, buffer){
 
 function ReadToFiles(len, paths, target, fd, buffer){
     var remains = len;
+    // check directories and truncate files
+    for (var i = 0; i < paths.length; i++){
+        var npath = target + paths[i];
+        ensureDirectory(path.dirname(npath));
+        fs.truncateSync(npath, 0);
+    }
 
+    // read bytes into files
     while (remains > 0){
         var next = (remains > buffer.length) ? (buffer.length) : (remains);
         var rlen = fs.readSync(fd, buffer, 0, next, null);
@@ -69,7 +76,6 @@ function ReadToFiles(len, paths, target, fd, buffer){
         var data = buffer.slice(0, rlen);
         for (var i = 0; i < paths.length; i++){
             var npath = target + paths[i];
-            ensureDirectory(path.dirname(npath));
             fs.appendFileSync(npath, data);
         }
     }
