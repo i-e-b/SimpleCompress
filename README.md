@@ -1,13 +1,13 @@
 # SimpleCompress
 An quick test of multi-file compression with long paths and many duplicate files
 
-This is specifically pure .Net so it can be included in .msi installers.
+The C# version specifically uses only standard GAC dependencies so it can be included in .msi installers.
 
-**Important** This tool does not keep track of file permissions, flags, creation dates or any other meta-data.
+**Important** This tool does not keep track of file permissions, flags, creation dates or any other meta-data. It will lose execute flags and will replace sym-links will copies of files.
 
 ### To do
 
- * handle long file names
+ * handle long file names in C#
 
 ### Internals
 
