@@ -47,9 +47,55 @@ function Pack(src, dst) {
     });
 
     // open pack file
+    var cat = fs.openSync(temp, 'w');
+
     // write first data of each dict entry to cat file
+    Object.keys(parts).forEach(function(key){
+        var paths = parts[key];
+        var pathBuffer = new Buffer(paths.join('|'), 'utf8');
+        WriteLength(cat, pathBuffer.length);
+        fs.writeSync(cat, pathBuffer, 0, pathBuffer.length, null);
+        var srcFile = path.resolve(path.join(src, paths[0]));
+        var fileSize = fs.statSync(srcFile).size;
+        WriteLength(cat, fileSize);
+        WriteFileData(cat, srcFile);
+    });
+    
     // close and gzip the cat file
+    fs.close(cat);
+    if (fs.existsSync(dst)) {fs.truncateSync(dst, 0);}
+    var gzip = zlib.createGzip({level:9});
+    var inp = fs.createReadStream(temp);
+    var out = fs.createWriteStream(dst);
+
+    console.log('compressing');
+    var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
+
     // delete cat file
+    unzip.on('finish', function unzipCallback(){
+        if (inp.end) inp.end();
+        if (out.end) out.end();
+        fs.unlinkSync(temp);
+        console.log('done');
+    });
+}
+
+function WriteLength(fd, length){
+    var b = new Buffer(8);
+    b.writeIntLE(length, 0, 8);
+    fs.writeSync(fd, b, 0, 8, null);
+}
+
+function WriteFileData(dst, fileToAdd){
+    var src = fs.openSync(fileToAdd, 'r');
+    var buf = new Buffer(65536);
+
+    for (;;){
+        var rlen = fs.readSync(src, buf, 0, buf.length, null);
+        if (rlen < 1) break;
+        fs.writeSync(dst, buf, 0, rlen, null);
+    }
+    fs.close(src);
 }
 
 // run a function against every path under a root path
