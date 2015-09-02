@@ -32,41 +32,53 @@ function ShowUsageAndExit() {
     process.exit(1);
 }
 
-// recursively scan a directorf and pack its contents into an archive
+// recursively scan a directory and pack its contents into an archive
 function Pack(src, dst) {
-    var temp = src + '.tmp';
+    var temp = dst + '.tmp';
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
 
     // build dictionary of equal files
+    var parts = {};
+    applyToDeepPaths(src, function(p){
+        var key = path.basename(p)+'|'+fileHashSync(p);
+        var subs = p.replace(src,"");
+        if (parts[key]) parts[key].push(subs);
+        else parts[key] = [subs];
+    });
+
     // open pack file
     // write first data of each dict entry to cat file
     // close and gzip the cat file
     // delete cat file
 }
 
-// async hash of file.
-// TODO: convert to sync without having to read whole file.
-function fileHash (filename, callback) {
-  var sum = crypto.createHash('md5')
-  if (callback && typeof callback === 'function') {
-    var fileStream = fs.createReadStream(filename)
-    fileStream.on('error', function (err) {
-      return callback(err, null)
-    })
-    fileStream.on('data', function (chunk) {
-      try {
-        sum.update(chunk)
-      } catch (ex) {
-        return callback(ex, null)
-      }
-    })
-    fileStream.on('end', function () {
-      return callback(null, sum.digest('hex'))
-    })
-  } else {
-    sum.update(fs.readFileSync(filename))
-    return sum.digest('hex')
-  }
+// run a function against every path under a root path
+function applyToDeepPaths(root, functor){
+    var exists = fs.existsSync(root);
+    var stats = exists && fs.statSync(root); // we will treat symlinks as real things. Pray for no loops
+    var isDirectory = exists && stats.isDirectory();
+    if (isDirectory) {
+        fs.readdirSync(root).forEach(function(childItemName) {
+            applyToDeepPaths(path.join(root, childItemName), functor);
+        });
+    } else if (exists) {
+        functor(root);
+    }
+}
+
+// sync file hash without loading whole file
+function fileHashSync(filename){
+    var sum = crypto.createHash('md5');
+    var fd = fs.openSync(filename, 'r');
+    var buf = new Buffer(65536);
+
+    for (;;){
+        var rlen = fs.readSync(fd, buf, 0, buf.length, null);
+        if (rlen < 1) break;
+        sum.update(buf.slice(0, rlen));
+    }
+    fs.close(fd);
+    return sum.digest('base64');
 }
 
 // expand an existing package file into a directory structure
