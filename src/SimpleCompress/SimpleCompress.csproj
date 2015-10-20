@@ -46,6 +46,7 @@
   <ItemGroup>
     <Compile Include="Compress.cs" />
     <Compile Include="Decompress.cs" />
+    <Compile Include="NativeIO.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

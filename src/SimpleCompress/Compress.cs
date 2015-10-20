@@ -18,11 +18,13 @@
             var bits = new Dictionary<string, List<string>>();
 
             // find distinct files
-            foreach (var file in Directory.EnumerateFiles(srcPath, "*", SearchOption.AllDirectories)) {
-                var name = Path.GetFileName(file);
+            var files = NativeIO.EnumerateFiles(new PathInfo(srcPath).FullNameUnc, searchOption: SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                var name = file.Name;
                 var hash = HashOf(file);
 
-                Add(name + "|" + hash, file, bits);
+                Add(name + "|" + hash, file.FullName, bits);
             }
 
             // pack everything into a temp file
@@ -36,16 +38,16 @@
                     WriteLength(catPaths.Length, fs);
                     fs.Write(catPaths, 0, catPaths.Length);
 
-                    var info = new FileInfo(paths[0]);
-                    WriteLength(info.Length, fs);
+                    var info = NativeIO.ReadFileDetails(new PathInfo(paths[0]));
+                    WriteLength((long)info.Length, fs);
 
-                    using (var inf = info.OpenRead()) inf.CopyTo(fs);
+                    using (var inf = NativeIO.OpenFileStream(info.PathInfo, FileAccess.Read)) inf.CopyTo(fs);
 
                     fs.Flush();
                 }
 
             // Compress the file
-            File.Delete(dstFilePath);
+            if (File.Exists(dstFilePath)) File.Delete(dstFilePath);
             using (var compressing = new GZipStream(File.OpenWrite(dstFilePath), CompressionLevel.Optimal))
             using (var cat = File.OpenRead(tmp))
             {
@@ -81,10 +83,10 @@
             container[key].Add(value);
         }
 
-        static string HashOf(string path)
+        static string HashOf(FileDetailBase file)
         {
             using (var md5 = MD5.Create())
-            using (var stream = File.OpenRead(path))
+            using (var stream = NativeIO.OpenFileStream(file.PathInfo, FileAccess.Read))
             {
                 return Convert.ToBase64String(md5.ComputeHash(stream));
             }

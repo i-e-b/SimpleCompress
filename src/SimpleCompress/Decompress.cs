@@ -27,7 +27,7 @@
             using (var fs = File.OpenRead(tmp)) 
                 while (ReadLength(fs, out pathsLength))
                 {
-                    // get all targte paths
+                    // get all target paths
                     long fileLength;
                     var subPaths = ReadUtf8(fs, pathsLength).Split('|');
                     if (!ReadLength(fs, out fileLength)) throw new Exception("Malformed file: no length for data");
@@ -39,10 +39,11 @@
                     if (subPaths.Length == 1) continue;
 
                     // copy first file into all other locations
+                    var srcInfo = new PathInfo(firstPath);
                     for (int i = 1; i < subPaths.Length; i++) {
                         var thisPath = dstPath + subPaths[i];
                         PutFolder(thisPath);
-                        File.Copy(firstPath, thisPath);
+                        NativeIO.CopyFile(srcInfo, new PathInfo(thisPath));
                     }
                 }
 
@@ -52,7 +53,8 @@
 
         static void PutFolder(string path)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)??@"\");
+            var pinfo = new PathInfo(path);
+            if (pinfo.Parent != null) NativeIO.CreateDirectory(new PathInfo(path).Parent, recursive:true);
         }
 
         static void CopyLength(Stream fs, string dstFilePath, long fileLength)
@@ -60,7 +62,7 @@
             const int bufSz = 65536;
             var remain = fileLength;
             var buffer = new byte[bufSz];
-            using (var fout = File.OpenWrite(dstFilePath)) {
+            using (var fout = NativeIO.OpenFileStream(new PathInfo(dstFilePath), FileAccess.Write, FileMode.CreateNew)) {
                 int len;
                 while (remain > bufSz) {
                     len = fs.Read(buffer, 0, bufSz);

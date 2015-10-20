@@ -141,7 +141,7 @@ function Unpack(src, dst) {
 
     unzip.on('finish', function unzipCallback(){
         if (inp.end) inp.end()
-            if (out.end) out.end();
+        if (out.end) out.end();
 
         console.log('unpacking files');
         unpackCat(temp, dst);

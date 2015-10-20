@@ -5,11 +5,13 @@ The C# version specifically uses only standard GAC dependencies so it can be inc
 
 **Important** This tool does not keep track of file permissions, flags, creation dates or any other meta-data. It will lose execute flags and will replace sym-links will copies of files.
 
-### To do
-
- * handle long file names in C#
-
 ### Internals
+
+Filesystem / IO:
+
+Uses a cut down version of https://github.com/i-e-b/tinyQuickIO to handle long file paths in Windows.
+The built in .Net IO namespace often fails with `node_modules` folders in large projects.
+Note that long file names are not currently supported for compressed and temp files.
 
 Compression:
 
