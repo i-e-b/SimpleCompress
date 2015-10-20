@@ -16,7 +16,6 @@
     using Microsoft.Win32.SafeHandles;
     using System.Linq;
 
-
     enum Win32SecurityObjectType
     {
         SeUnknownObjectType = 0x0,

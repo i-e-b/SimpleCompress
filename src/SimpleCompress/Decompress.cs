@@ -43,7 +43,7 @@
                     for (int i = 1; i < subPaths.Length; i++) {
                         var thisPath = dstPath + subPaths[i];
                         PutFolder(thisPath);
-                        NativeIO.CopyFile(srcInfo, new PathInfo(thisPath));
+                        if (!NativeIO.CopyFile(srcInfo, new PathInfo(thisPath))) throw new Exception("Failed to write "+ thisPath);
                     }
                 }
 
