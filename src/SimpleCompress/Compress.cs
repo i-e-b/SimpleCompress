@@ -83,7 +83,7 @@
             container[key].Add(value);
         }
 
-        static string HashOf(FileDetailBase file)
+        static string HashOf(FileDetail file)
         {
             using (var md5 = MD5.Create())
             using (var stream = NativeIO.OpenFileStream(file.PathInfo, FileAccess.Read))
