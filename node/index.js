@@ -11,6 +11,9 @@ if (args.length != 3) { ShowUsageAndExit(); }
 var src = path.resolve(args[1]);
 var dst = path.resolve(args[2]);
 
+// Only need to check this once
+const isWin = /^win/.test(process.platform);
+
 switch (args[0]) {
     case "pack":
         Pack(src, dst);
@@ -60,7 +63,7 @@ function Pack(src, dst) {
         WriteLength(cat, fileSize);
         WriteFileData(cat, srcFile);
     });
-    
+
     // close and gzip the cat file
     fs.close(cat);
     if (fs.existsSync(dst)) {fs.truncateSync(dst, 0);}
@@ -140,7 +143,7 @@ function Unpack(src, dst) {
     var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
 
     unzip.on('finish', function unzipCallback(){
-        if (inp.end) inp.end()
+        if (inp.end) inp.end();
         if (out.end) out.end();
 
         console.log('unpacking files');
@@ -177,6 +180,7 @@ function ReadPaths(len, fd, buffer){
     if (rlen < 1) throw new Error('Malformed file: Empty path set');
     if (rlen != len) throw new Error("Malformed file: truncated file path list");
     var s = buffer.toString('utf8',0,rlen);
+    s = correctFilepath(s);
     return s.split('|');
 }
 
@@ -222,15 +226,23 @@ function ensureDirectory (p) {
                 ensureDirectory(path.dirname(p));
                 ensureDirectory(p);
                 break;
-        default:
-            try {
-                var stat = fs.statSync(p);
-                if (!stat.isDirectory()) throw err0;
-            } catch (err1) {
-                throw err0;
-            }
-            break;
+            default:
+                try {
+                    var stat = fs.statSync(p);
+                    if (!stat.isDirectory()) throw err0;
+                } catch (err1) {
+                    throw err0;
+                }
+                break;
         }
     }
-};
+}
 
+/**
+ * The compression may have been done on a different os to the current one, so the paths may need to be corrected
+ * @param path
+ */
+function correctFilepath(path) {
+    if (isWin) return path.split('/').join('\\');
+    else return path.split('\\').join('/');
+}
