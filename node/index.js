@@ -12,7 +12,7 @@ var src = path.resolve(args[1]);
 var dst = path.resolve(args[2]);
 
 // Only need to check this once
-const isWin = /^win/.test(process.platform);
+var isWin = /^win/.test(process.platform);
 
 switch (args[0]) {
     case "pack":
