@@ -7,6 +7,24 @@
     using System.Security.Cryptography;
     using System.Text;
 
+    public class PathList
+    {
+        public List<string> Paths;
+        public byte[] HashData;
+
+        public PathList(byte[] hash, string fullName)
+        {
+            Paths = new List<string>();
+            Paths.Add(fullName);
+            HashData = hash;
+        }
+
+        public void Add(string fullName)
+        {
+            Paths.Add(fullName);
+        }
+    }
+
     public static class Compress
     {
         public static void FolderToFile(string srcPath, string dstFilePath) {
@@ -15,16 +33,15 @@
             // gzip that file
 
             var tmp = dstFilePath+".tmp";
-            var bits = new Dictionary<string, List<string>>();
+            var bits = new Dictionary<string, PathList>();
 
             // find distinct files
             var files = NativeIO.EnumerateFiles(new PathInfo(srcPath).FullNameUnc, searchOption: SearchOption.AllDirectories);
             foreach (var file in files)
             {
-                var name = file.Name;
                 var hash = HashOf(file);
 
-                Add(name + "|" + hash, file.FullName, bits);
+                Add(hash, file, bits);
             }
 
             // pack everything into a temp file
@@ -32,15 +49,20 @@
             using(var fs = File.OpenWrite(tmp))
                 foreach (var key in bits.Keys)
                 {
-                    var paths = bits[key];
-                    var catPaths = Encoding.UTF8.GetBytes(string.Join("|", Filter(paths,srcPath)));
+                    var pathList = bits[key];
+                    var catPaths = Encoding.UTF8.GetBytes(string.Join("|", Filter(pathList.Paths,srcPath)));
 
+                    // Write <MD5:16 bytes>
+                    fs.Write(pathList.HashData, 0, 16);
+
+                    // Write <length:8 bytes><paths:utf8 str>
                     WriteLength(catPaths.Length, fs);
                     fs.Write(catPaths, 0, catPaths.Length);
 
-                    var info = NativeIO.ReadFileDetails(new PathInfo(paths[0]));
-                    WriteLength((long)info.Length, fs);
+                    var info = NativeIO.ReadFileDetails(new PathInfo(pathList.Paths[0]));
 
+                    // Write <length:8 bytes><data:byte array>
+                    WriteLength((long)info.Length, fs);
                     using (var inf = NativeIO.OpenFileStream(info.PathInfo, FileAccess.Read)) inf.CopyTo(fs);
 
                     fs.Flush();
@@ -77,18 +99,19 @@
             fs.Write(bytes, 0, 8);
         }
 
-        static void Add(string key, string value, IDictionary<string, List<string>> container)
+        static void Add(byte[] hash, FileDetail file, IDictionary<string, PathList> container)
         {
-            if (!container.ContainsKey(key)) container.Add(key, new List<string>());
-            container[key].Add(value);
+            var key = file.Name + "|" + (Convert.ToBase64String(hash));
+            if (!container.ContainsKey(key)) container.Add(key, new PathList(hash, file.FullName));
+            container[key].Add(file.FullName);
         }
 
-        static string HashOf(FileDetail file)
+        static byte[] HashOf(FileDetail file)
         {
             using (var md5 = MD5.Create())
             using (var stream = NativeIO.OpenFileStream(file.PathInfo, FileAccess.Read))
             {
-                return Convert.ToBase64String(md5.ComputeHash(stream));
+                return (md5.ComputeHash(stream));
             }
         }
     }
