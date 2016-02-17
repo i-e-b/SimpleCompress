@@ -38,7 +38,12 @@ function cli() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function ShowUsageAndExit() {
-    console.log("Simple Compress\r    Usage:\r        sc pack <src directory> <target file>\r        sc unpack <src file> <target directory>");
+    console.log(
+        ["Simple Compress",
+            "    Usage:",
+            "        sz pack <src directory> <target file>",
+            "        sz unpack <src file> <target directory>"].join(require('os').EOL)
+    );
 }
 
 // recursively scan a directory and pack its contents into an archive
