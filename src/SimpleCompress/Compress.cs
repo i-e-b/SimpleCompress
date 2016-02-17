@@ -103,7 +103,7 @@
         {
             var key = file.Name + "|" + (Convert.ToBase64String(hash));
             if (!container.ContainsKey(key)) container.Add(key, new PathList(hash, file.FullName));
-            container[key].Add(file.FullName);
+            else container[key].Add(file.FullName);
         }
 
         static byte[] HashOf(FileDetail file)

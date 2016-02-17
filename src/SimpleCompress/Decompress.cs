@@ -23,18 +23,23 @@
             }
 
             // scan the file
-            long pathsLength;
-            using (var fs = File.OpenRead(tmp)) 
-                while (ReadLength(fs, out pathsLength))
+            using (var fs = File.OpenRead(tmp)) {
+                byte[] fileHash;
+                long pathsLength;
+                // <MD5:16 bytes><length:8 bytes>>
+                while (ReadPathLength(fs, out pathsLength, out fileHash))
                 {
                     // get all target paths
                     long fileLength;
+                    // <paths:utf8 str>
                     var subPaths = ReadUtf8(fs, pathsLength).Split('|');
-                    if (!ReadLength(fs, out fileLength)) throw new Exception("Malformed file: no length for data");
+                    // <length:8 bytes>
+                    if (!ReadFileLength(fs, out fileLength)) throw new Exception("Malformed file: no length for data");
 
                     // read source into first file
                     var firstPath = dstPath+subPaths[0];
                     PutFolder(firstPath);
+                    // <data:byte array>
                     CopyLength(fs, firstPath, fileLength);
                     if (subPaths.Length == 1) continue;
 
@@ -46,6 +51,7 @@
                         if (!NativeIO.CopyFile(srcInfo, new PathInfo(thisPath))) throw new Exception("Failed to write "+ thisPath);
                     }
                 }
+            }
 
             // cleanup temp file
             File.Delete(tmp);
@@ -88,14 +94,35 @@
             return Encoding.UTF8.GetString(bytes);
         }
 
-        static bool ReadLength(Stream fs, out long pathsLength)
+        static bool ReadPathLength(Stream fs, out long pathsLength, out byte[] md5Hash)
         {
-            var bytes = new byte[8];
-            var len = fs.Read(bytes, 0, 8);
-            if (len != 8) { pathsLength = 0; return false; }
+            md5Hash = null;
+            pathsLength = 0;
 
-            if (!BitConverter.IsLittleEndian) Array.Reverse(bytes, 0, bytes.Length);
-            pathsLength = BitConverter.ToInt64(bytes, 0);
+            var md5Buffer = new byte[16];
+            var len = fs.Read(md5Buffer, 0, 16);
+            if (len != 16) { return false; }
+
+            var lengthBuffer = new byte[8];
+            len = fs.Read(lengthBuffer, 0, 8);
+            if (len != 8) { return false; }
+
+            md5Hash = md5Buffer; // there should be no endian issues on the MD5 hash.
+            if (!BitConverter.IsLittleEndian) Array.Reverse(lengthBuffer, 0, lengthBuffer.Length);
+            pathsLength = BitConverter.ToInt64(lengthBuffer, 0);
+            return true;
+        }
+
+        static bool ReadFileLength(Stream fs, out long pathsLength)
+        {
+            pathsLength = 0;
+
+            var lengthBuffer = new byte[8];
+            var len = fs.Read(lengthBuffer, 0, 8);
+            if (len != 8) { return false; }
+
+            if (!BitConverter.IsLittleEndian) Array.Reverse(lengthBuffer, 0, lengthBuffer.Length);
+            pathsLength = BitConverter.ToInt64(lengthBuffer, 0);
             return true;
         }
     }
