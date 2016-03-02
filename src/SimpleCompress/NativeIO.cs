@@ -68,13 +68,15 @@
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern bool FindNextFile(Win32FileHandle findFileHandle, [In, Out, MarshalAs(UnmanagedType.LPStruct)] Win32FindData win32FindData);
 
-
         /// <summary>
         /// Copy file
         /// </summary>
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool CopyFile(string fullNameSource, string fullNameTarget, bool failOnExists);
+        internal static extern bool CopyFile(
+             [MarshalAs(UnmanagedType.LPWStr)] string fullNameSource,
+             [MarshalAs(UnmanagedType.LPWStr)] string fullNameTarget,
+             [MarshalAs(UnmanagedType.Bool)] bool failOnExists);
 
         /// <summary>
         /// Gets Attributes of given path
@@ -1226,8 +1228,11 @@
             bool failOnExists = !overwrite;
 
             bool result = Win32SafeNativeMethods.CopyFile(sourceFilePath.FullNameUnc, targetFilePath.FullNameUnc, failOnExists);
-            int win32Error = Marshal.GetLastWin32Error();
-            NativeExceptionMapping(sourceFilePath.FullName, win32Error);
+            if (!result)
+            {
+                int win32Error = Marshal.GetLastWin32Error();
+                NativeExceptionMapping(sourceFilePath.FullName, win32Error);
+            }
             return result;
         }
     }
