@@ -5,34 +5,53 @@ var zlib = require('zlib');
 var path = require('path');
 var crypto = require('crypto')
 
-var args = process.argv.slice(2);
-if (args.length != 3) { ShowUsageAndExit(); }
-
-var src = path.resolve(args[1]);
-var dst = path.resolve(args[2]);
-
-// Only need to check this once
 var isWin = /^win/.test(process.platform);
 
-switch (args[0]) {
-    case "pack":
-        Pack(src, dst);
-        break;
+module.exports = {
+    cli: cli,
+    pack: Pack,
+    unpack: Unpack
+};
 
-    case "unpack":
-        Unpack(src, dst);
-        break;
+function cli() {
+    var args = process.argv.slice(2);
+    if (args.length != 3) { return ShowUsageAndExit(); }
 
-    default:
-        ShowUsageAndExit();
-        break;
+    var src = path.resolve(args[1]);
+    var dst = path.resolve(args[2]);
+
+    switch (args[0]) {
+        case "pack":
+            Pack(src, dst);
+            break;
+
+        case "unpack":
+            Unpack(src, dst);
+            break;
+
+        default:
+            ShowUsageAndExit();
+            break;
+    }
 }
 // end of main program
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function ShowUsageAndExit() {
-    console.log("Simple Compress\r    Usage:\r        sc pack <src directory> <target file>\r        sc unpack <src file> <target directory>");
-    process.exit(1);
+    console.log(
+        ["Simple Compress",
+            "    Usage:",
+            "        sz pack <src directory> <target file>",
+            "        sz unpack <src file> <target directory>"].join(require('os').EOL)
+    );
+}
+
+var logStageWaiting = false;
+function logStage(str) {
+    if (logStageWaiting) {console.timeEnd(' done');}
+    process.stdout.write(str);
+    console.time(' done');
+    logStageWaiting = true;
 }
 
 // recursively scan a directory and pack its contents into an archive
@@ -41,23 +60,30 @@ function Pack(src, dst) {
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
 
     // build dictionary of equal files
+    logStage('scanning for duplicates');
     var parts = {};
     applyToDeepPaths(src, function(p){
-        var key = path.basename(p)+'|'+fileHashSync(p);
+        var hash = fileHashSync(p);
+        var key = path.basename(p)+'|'+(hash.toString('base64'));
         var subs = p.replace(src,"");
-        if (parts[key]) parts[key].push(subs);
-        else parts[key] = [subs];
+        if (parts[key]) parts[key].paths.push(subs);
+        else parts[key] = {paths : [subs], hash : hash};
     });
 
     // open pack file
     var cat = fs.openSync(temp, 'w');
 
+    logStage('writing log');
     // write first data of each dict entry to cat file
     Object.keys(parts).forEach(function(key){
-        var paths = parts[key];
+        // Write <MD5:16 bytes>
+        WriteBuffer(cat, parts[key].hash, 16);
+        // Write <length:8 bytes><paths:utf8 str>
+        var paths = parts[key].paths;
         var pathBuffer = new Buffer(paths.join('|'), 'utf8');
         WriteLength(cat, pathBuffer.length);
         fs.writeSync(cat, pathBuffer, 0, pathBuffer.length, null);
+        // Write <length:8 bytes><data:byte array>
         var srcFile = path.resolve(path.join(src, paths[0]));
         var fileSize = fs.statSync(srcFile).size;
         WriteLength(cat, fileSize);
@@ -71,7 +97,7 @@ function Pack(src, dst) {
     var inp = fs.createReadStream(temp);
     var out = fs.createWriteStream(dst);
 
-    console.log('compressing');
+    logStage('compressing');
     var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
 
     // delete cat file
@@ -79,7 +105,7 @@ function Pack(src, dst) {
         if (inp.end) inp.end();
         if (out.end) out.end();
         fs.unlinkSync(temp);
-        console.log('done');
+        logStage('');
     });
 }
 
@@ -87,6 +113,10 @@ function WriteLength(fd, length){
     var b = new Buffer(8);
     b.writeIntLE(length, 0, 8);
     fs.writeSync(fd, b, 0, 8, null);
+}
+
+function WriteBuffer(fd, buf, len) {
+    fs.writeSync(fd, buf, 0, len, null);
 }
 
 function WriteFileData(dst, fileToAdd){
@@ -127,7 +157,7 @@ function fileHashSync(filename){
         sum.update(buf.slice(0, rlen));
     }
     fs.close(fd);
-    return sum.digest('base64');
+    return sum.digest();
 }
 
 // expand an existing package file into a directory structure
@@ -139,16 +169,16 @@ function Unpack(src, dst) {
     var inp = fs.createReadStream(src);
     var out = fs.createWriteStream(temp);
 
-    console.log('decompressing');
+    logStage('decompressing');
     var unzip = inp.pipe(gzip).pipe(out); // unpack into catenated file
 
     unzip.on('finish', function unzipCallback(){
         if (inp.end) inp.end();
         if (out.end) out.end();
 
-        console.log('unpacking files');
+        logStage('unpacking files');
         unpackCat(temp, dst);
-        console.log('done');
+        logStage('');
     });
 }
 
@@ -157,10 +187,12 @@ function Unpack(src, dst) {
 
 function unpackCat(srcPack, targetPath) {
     var cat = fs.openSync(srcPack, 'r');
-    var buf = new Buffer(65536);
+    var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
     var offset = 0;
 
     for(;;){
+        var hash = ReadHash(cat);
+        if (hash == null) {break;}
         var pathLen = ReadLength(cat, buf);
         if (pathLen == 0) {break;}
         var paths = ReadPaths(pathLen, cat, buf);
@@ -168,14 +200,22 @@ function unpackCat(srcPack, targetPath) {
         // read contents out to all the files at once.
         // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
         var fileLen = ReadLength(cat, buf);
-        ReadToFiles(fileLen, paths, targetPath, cat, buf);
+        ReadToFiles(fileLen, paths, targetPath, cat, buf, hash);
     }
     fs.close(cat);
     fs.unlinkSync(srcPack);
 }
 
+function ReadHash(fd) {
+    var hbuf = new Buffer(16);
+    var rlen = fs.readSync(fd, hbuf, 0, 16, null);
+    if (rlen == 0) return null; // no more file
+    if (rlen !== 16) throw new Error("Malformed file: truncated file set checksum");
+    return hbuf;
+}
+
 function ReadPaths(len, fd, buffer){
-    // todo: handle paths > 64k long
+    // todo: handle paths longer than buffer?
     var rlen = fs.readSync(fd, buffer, 0, len, null);
     if (rlen < 1) throw new Error('Malformed file: Empty path set');
     if (rlen != len) throw new Error("Malformed file: truncated file path list");
@@ -184,8 +224,11 @@ function ReadPaths(len, fd, buffer){
     return s.split('|');
 }
 
-function ReadToFiles(len, paths, target, fd, buffer){
+function ReadToFiles(len, paths, target, fd, buffer, expectedHash){
     var remains = len;
+
+    if (paths.length < 1) return;
+
     // check directories and truncate files
     for (var i = 0; i < paths.length; i++){
         var npath = path.join(target, paths[i]);
@@ -193,19 +236,47 @@ function ReadToFiles(len, paths, target, fd, buffer){
         if (fs.existsSync(npath)) {fs.truncateSync(npath, 0);}
     }
 
-    // read bytes into files
+    // read bytes into files. We write one file at a time, rescanning the buffer.
+    // it should be less efficient, but it plays nicely with anti-virus junkware
+    // and OS expectations, resulting in a faster overall output
+
+    // 1) write first file
+    var rlen = 0;
+    var masterPath = path.join(target, paths[0]);
+    var masterFd = fs.openSync(masterPath, 'w+');
+    var sum = crypto.createHash('md5');
     while (remains > 0){
         var next = (remains > buffer.length) ? (buffer.length) : (remains);
-        var rlen = fs.readSync(fd, buffer, 0, next, null);
+        rlen = fs.readSync(fd, buffer, 0, next, null);
         if (rlen < 1) throw new Error('Malformed file: truncated file data');
         remains -= rlen;
-
-        var data = buffer.slice(0, rlen);
-        for (var i = 0; i < paths.length; i++){
-            var npath = path.join(target, paths[i]);
-            fs.appendFileSync(npath, data);
-        }
+        // write the file
+        fs.writeSync(masterFd, buffer, 0, rlen);
+        // calculate hash
+        sum.update(buffer.slice(0, rlen));
     }
+    var actualHash = sum.digest();
+
+    // Check the written data against the originam checksum
+    // We do this only once, because we're checking for errors in the package transit, not errors of the local system.
+    if (actualHash.toString() !== expectedHash.toString()) {
+        throw new Error('Damaged archive: File at '+paths[0]+' failed a checksum');
+    }
+
+    // 2) copy original for all subsequent files. Unfortunately this is slow under nodejs
+    for (var i = 1; i < paths.length; i++){
+        var npath = path.join(target, paths[i]);
+        var dstFd = fs.openSync(npath, 'w');
+        var pos = 0;
+        while (pos < len) {
+            rlen = fs.readSync(masterFd, buffer, 0, buffer.length, pos);
+            if (rlen < 1) break;
+            pos += rlen;
+            fs.writeSync(dstFd, buffer, 0, rlen);
+        }
+        fs.close(dstFd);
+    }
+    fs.close(masterFd);
 }
 
 function ReadLength(fd, buffer){
