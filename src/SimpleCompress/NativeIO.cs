@@ -14,6 +14,7 @@
     using System.IO;
     using System.Runtime.InteropServices;
     using System.Security.Permissions;
+    using System.Text;
     using Microsoft.Win32.SafeHandles;
     using System.Linq;
 
@@ -33,11 +34,6 @@
         SeWmiguidObject = 0xb,
         SeRegistryWow6432Key = 0xc
     }
-    enum SymLinkFlag
-    {
-        File = 0,
-        Directory = 1
-    }
     enum FileAttrFlags : uint {
         INVALID_FILE_ATTRIBUTES = 0xffffffff,
         FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -45,12 +41,29 @@
 
     static class Win32SafeNativeMethods
     {
-        /// <summary>
-        /// Create a symlink to a fie or directory
-        /// </summary>
         [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.I1)]
-        public static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, SymLinkFlag dwFlags);
+        public static extern SafeFileHandle CreateFile(
+            string lpFileName,
+            uint dwDesiredAccess,
+            uint dwShareMode,
+            IntPtr lpSecurityAttributes,
+            uint dwCreationDisposition,
+            uint dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, int dwFlags);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern bool DeviceIoControl(
+            IntPtr hDevice,
+            uint dwIoControlCode,
+            IntPtr lpInBuffer,
+            int nInBufferSize,
+            IntPtr lpOutBuffer,
+            int nOutBufferSize,
+            out int lpBytesReturned,
+            IntPtr lpOverlapped);
 
         /// <summary>
         /// Create directory
@@ -234,7 +247,26 @@
 
 
     }
-   
+
+    /// <remarks>
+    /// Refer to http://msdn.microsoft.com/en-us/library/windows/hardware/ff552012%28v=vs.85%29.aspx
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SymbolicLinkReparseData
+    {
+        private const int maxUnicodePathLength = 33000;
+
+        public uint ReparseTag;
+        public ushort ReparseDataLength;
+        public ushort Reserved;
+        public ushort SubstituteNameOffset;
+        public ushort SubstituteNameLength;
+        public ushort PrintNameOffset;
+        public ushort PrintNameLength;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = maxUnicodePathLength)]
+        public byte[] PathBuffer;
+    }
 
     /// <summary>
     /// Provides a class for Win32 safe handle implementations
@@ -1137,13 +1169,14 @@
         ///     Determined all files of a directory
         /// </summary>
         /// <param name="uncDirectoryPath">Path of the directory</param>
+        /// <param name="enterSymLinkPredicate">Function given the path of symbolic link directories and the matching target. If it returns `true`, the directory will be recursed, otherwise it will be skipped</param>
         /// <param name="pattern">Search pattern. Uses Win32 native filtering.</param>
         /// <param name="searchOption">
         ///     <see cref="SearchOption" />
         /// </param>
         /// <param name="enumerateOptions">The enumeration options for exception handling</param>
         /// <returns>Collection of files</returns>
-        internal static IEnumerable<FileDetail> EnumerateFiles(String uncDirectoryPath, String pattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly, SuppressExceptions enumerateOptions = SuppressExceptions.None)
+        internal static IEnumerable<FileDetail> EnumerateFiles(String uncDirectoryPath, Func<string,string, bool> enterSymLinkPredicate, String pattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly, SuppressExceptions enumerateOptions = SuppressExceptions.None)
         {
             // Match for start of search
             string currentPath = PathTools.Combine(uncDirectoryPath, pattern);
@@ -1159,7 +1192,7 @@
                     yield return null;
                 }
 
-                // Treffer auswerten
+                // evaluate results
                 do
                 {
                     // Ignore . and .. directories
@@ -1169,24 +1202,31 @@
                     }
 
                     // Create hit for current search result
-                    string resultPath = PathTools.Combine(uncDirectoryPath, win32FindData.cFileName);
+                    var resultPath = PathTools.Combine(uncDirectoryPath, win32FindData.cFileName);
 
                     // Check for Directory
-                    if (!ContainsFileAttribute(win32FindData.dwFileAttributes, FileAttributes.Directory))
+                    if (ContainsFileAttribute(win32FindData.dwFileAttributes, FileAttributes.Directory))
                     {
-                        yield return new FileDetail(resultPath, win32FindData);
-                    }
-                    else
-                    {
-                        // SubFolders?!
+                        // SubFolders?
                         if (searchOption == SearchOption.AllDirectories)
                         {
-                            foreach (var match in EnumerateFiles(resultPath, pattern, searchOption, enumerateOptions))
+                            // check for sym link
+                            if (SymbolicLink.IsSymLink(win32FindData))
+                            {
+                                if (!enterSymLinkPredicate(new FileDetail(resultPath, win32FindData).FullName, SymbolicLink.GetTarget(resultPath))) { continue; }
+                            }
+
+                            foreach (var match in EnumerateFiles(resultPath, enterSymLinkPredicate, pattern, searchOption, enumerateOptions))
                             {
                                 yield return match;
                             }
                         }
                     }
+                    else
+                    {
+                        yield return new FileDetail(resultPath, win32FindData);
+                    }
+
                     // Create new FindData object for next result
                     win32FindData = new Win32FindData();
                 } // Search for next entry
@@ -1259,6 +1299,100 @@
                 NativeExceptionMapping(sourceFilePath.FullName, win32Error);
             }
             return result;
+        }
+
+
+        public static class SymbolicLink
+        {
+            private const uint GenericReadAccess = 0x80000000;
+            private const uint FileFlagsForOpenReparsePointAndBackupSemantics = 0x02200000;
+            private const int ioctlCommandGetReparsePoint = 0x000900A8;
+            private const uint OpenExisting = 0x3;
+            private const uint PathNotAReparsePointError = 0x80071126;
+            private const uint ShareModeAll = 0x7; // Read, Write, Delete
+            private const uint SymLinkTag = 0xA000000C;
+            private const int TargetIsAFile = 0;
+            private const int TargetIsADirectory = 1;
+
+            public static void CreateDirectoryLink(string linkPath, string targetPath)
+            {
+                if (Win32SafeNativeMethods.CreateSymbolicLink(linkPath, targetPath, TargetIsADirectory) && Marshal.GetLastWin32Error() == 0) { return; }
+                try
+                {
+                    Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
+                }
+                catch (COMException exception)
+                {
+                    throw new IOException(exception.Message, exception);
+                }
+            }
+
+            public static void CreateFileLink(string linkPath, string targetPath)
+            {
+                if (!Win32SafeNativeMethods.CreateSymbolicLink(linkPath, targetPath, TargetIsAFile))
+                {
+                    Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
+                }
+            }
+
+            private static SafeFileHandle getFileHandle(string path)
+            {
+                return Win32SafeNativeMethods.CreateFile(path, GenericReadAccess, ShareModeAll, IntPtr.Zero, OpenExisting,
+                    FileFlagsForOpenReparsePointAndBackupSemantics, IntPtr.Zero);
+            }
+
+            public static string GetTarget(string path)
+            {
+                using (var fileHandle = getFileHandle(path))
+                {
+                    if (fileHandle.IsInvalid)
+                    {
+                        Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
+                    }
+
+                    int outBufferSize = Marshal.SizeOf(typeof(SymbolicLinkReparseData));
+                    IntPtr outBuffer = IntPtr.Zero;
+                    SymbolicLinkReparseData reparseDataBuffer;
+                    try
+                    {
+                        outBuffer = Marshal.AllocHGlobal(outBufferSize);
+                        int bytesReturned;
+                        bool success = Win32SafeNativeMethods.DeviceIoControl(
+                            fileHandle.DangerousGetHandle(), ioctlCommandGetReparsePoint, IntPtr.Zero, 0,
+                            outBuffer, outBufferSize, out bytesReturned, IntPtr.Zero);
+
+                        fileHandle.Close();
+
+                        if (!success)
+                        {
+                            if (((uint)Marshal.GetHRForLastWin32Error()) == PathNotAReparsePointError)
+                            {
+                                return null;
+                            }
+                            Marshal.ThrowExceptionForHR(Marshal.GetHRForLastWin32Error());
+                        }
+
+                        reparseDataBuffer = (SymbolicLinkReparseData)Marshal.PtrToStructure(
+                            outBuffer, typeof(SymbolicLinkReparseData));
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(outBuffer);
+                    }
+
+                    return reparseDataBuffer.ReparseTag != SymLinkTag
+                        ? null
+                        : Encoding.Unicode.GetString(reparseDataBuffer.PathBuffer, reparseDataBuffer.PrintNameOffset, reparseDataBuffer.PrintNameLength);
+                }
+            }
+
+            public static bool IsSymLink(Win32FindData win32FindData)
+            {
+                return
+                    ((uint)win32FindData.dwFileAttributes & (uint)FileAttrFlags.FILE_ATTRIBUTE_REPARSE_POINT) == (uint)FileAttrFlags.FILE_ATTRIBUTE_REPARSE_POINT
+                &&
+                    ((uint)win32FindData.dwReserved0 & SymLinkTag) == SymLinkTag;
+            }
         }
     }
 }

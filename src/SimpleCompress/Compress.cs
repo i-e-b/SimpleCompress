@@ -33,24 +33,34 @@
             // gzip that file
 
             var tmp = dstFilePath+".tmp";
-            var bits = new Dictionary<string, PathList>();
+            var filePaths = new Dictionary<string, PathList>();
+            var symLinks = new Dictionary<string, string>(); // link path -> target path
 
             // find distinct files
-            var files = NativeIO.EnumerateFiles(new PathInfo(srcPath).FullNameUnc, searchOption: SearchOption.AllDirectories);
+            var files = NativeIO.EnumerateFiles(new PathInfo(srcPath).FullNameUnc, (symPath, targetPath)=>{
+                if (IsSubpath(srcPath, targetPath))
+                {
+                    symLinks.Add(symPath, targetPath);
+                    return false;
+                }
+                return true;
+            }, searchOption: SearchOption.AllDirectories);
             foreach (var file in files)
             {
                 var hash = HashOf(file);
 
-                Add(hash, file, bits);
+                Add(hash, file, filePaths);
             }
 
             // pack everything into a temp file
             if (File.Exists(tmp)) File.Delete(tmp);
-            using(var fs = File.OpenWrite(tmp))
-                foreach (var key in bits.Keys)
+            using (var fs = File.OpenWrite(tmp))
+            {
+                // Write data files
+                foreach (var fileKey in filePaths.Keys)
                 {
-                    var pathList = bits[key];
-                    var catPaths = Encoding.UTF8.GetBytes(string.Join("|", Filter(pathList.Paths,srcPath)));
+                    var pathList = filePaths[fileKey];
+                    var catPaths = Encoding.UTF8.GetBytes(string.Join("|", Filter(pathList.Paths, srcPath)));
 
                     // Write <MD5:16 bytes>
                     fs.Write(pathList.HashData, 0, 16);
@@ -68,6 +78,25 @@
                     fs.Flush();
                 }
 
+                // Write symbolic links
+                foreach (var linkSrc in symLinks.Keys)
+                {
+                    var linkTarget = symLinks[linkSrc];
+                    var linkData = Encoding.UTF8.GetBytes(string.Join("|", Filter(new[] { linkSrc, linkTarget }, srcPath)));
+
+                    // Write <zeros:16 bytes>
+                    WriteLength(0, fs);
+                    WriteLength(0, fs);
+
+                    // Write <length:8 bytes><path pair:utf8 str>, path pair is 'src|target'
+                    WriteLength(linkData.Length, fs);
+                    fs.Write(linkData, 0, linkData.Length);
+
+                    // Write <length:8 bytes>, always zero (there is not file content in a link)
+                    WriteLength(0, fs);
+                }
+            }
+
             // Compress the file
             if (File.Exists(dstFilePath)) File.Delete(dstFilePath);
             using (var compressing = new GZipStream(File.OpenWrite(dstFilePath), CompressionLevel.Optimal))
@@ -78,7 +107,13 @@
             }
 
             // Kill the temp file
-            File.Delete(tmp);
+            //File.Delete(tmp);
+        }
+
+        static bool IsSubpath(string srcPath, string symPath)
+        {
+            Func<string,string> crop = p => (p.StartsWith(@"\\?\")) ? (p.Substring(4)) : (p);
+            return crop(symPath).StartsWith(crop(srcPath), StringComparison.Ordinal);
         }
 
         static string[] Filter(IReadOnlyList<string> paths, string srcPath)
