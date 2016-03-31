@@ -18,5 +18,17 @@
             File.Delete(@"W:\Temp\Compressed.inpkg");
         }
 
+        [Test]
+        public void symbolic_links_are_merged_if_external_and_relinked_if_internal() {
+            Compress.FolderToFile(@"W:\Temp\linkTest", @"W:\Temp\linktest.inpkg");
+            Decompress.FromFileToFolder(@"W:\Temp\linktest.inpkg",
+@"W:\Temp\DataResult\linkResult");
+
+            // todo: check the new output is identical to the input.
+
+            File.Delete(@"W:\Temp\linktest.inpkg");
+        }
+
+
     }
 }

@@ -62,12 +62,22 @@ function Pack(src, dst) {
     // build dictionary of equal files
     logStage('scanning for duplicates');
     var parts = {};
-    applyToDeepPaths(src, function(p){
+    var links = {};
+    applyToDeepPaths(src, function eachFile (p){
         var hash = fileHashSync(p);
         var key = path.basename(p)+'|'+(hash.toString('base64'));
         var subs = p.replace(src,"");
         if (parts[key]) parts[key].paths.push(subs);
         else parts[key] = {paths : [subs], hash : hash};
+    }, function shouldFollowSymlink(srcPath, targetPath){
+        if (targetPath.indexOf(src) === 0) {
+            // the link targets a path inside our source, write a link and return false (no follow)
+            links[srcPath.replace(src,"")] = targetPath.replace(src,"");
+            return false;
+        } else {
+            // the link is outside, we just return true (follow and treat as if it was not a link)
+            return true;
+        }
     });
 
     // open pack file
@@ -89,6 +99,19 @@ function Pack(src, dst) {
         WriteLength(cat, fileSize);
         WriteFileData(cat, srcFile);
     });
+    // write link table
+    Object.keys(links).forEach(function(key){
+        // Write <zeroes:16 bytes>
+        WriteLinkMarker(cat);
+
+        // Write <length:8 bytes><path pair:utf8 str>, path pair is 'src|target'
+        var pathBuffer = new Buffer(key+'|'+links[key], 'utf8');
+        WriteLength(cat, pathBuffer.length);
+        fs.writeSync(cat, pathBuffer, 0, pathBuffer.length, null);
+
+        // Write <length:8 bytes>, always zero (there is not file content in a link)
+        WriteLength(cat, 0);
+    });
 
     // close and gzip the cat file
     fs.close(cat);
@@ -104,7 +127,7 @@ function Pack(src, dst) {
     unzip.on('finish', function unzipCallback(){
         if (inp.end) inp.end();
         if (out.end) out.end();
-        fs.unlinkSync(temp);
+        // TODO: temp -> fs.unlinkSync(temp);
         logStage('');
     });
 }
@@ -113,6 +136,13 @@ function WriteLength(fd, length){
     var b = new Buffer(8);
     b.writeIntLE(length, 0, 8);
     fs.writeSync(fd, b, 0, 8, null);
+}
+
+function WriteLinkMarker(fd){
+    // 16 bytes of zeroes instead of MD5
+    var b = new Buffer(16);
+    b.fill(0);
+    fs.writeSync(fd, b, 0, 16, null);
 }
 
 function WriteBuffer(fd, buf, len) {
@@ -132,16 +162,21 @@ function WriteFileData(dst, fileToAdd){
 }
 
 // run a function against every path under a root path
-function applyToDeepPaths(root, functor){
+function applyToDeepPaths(root, fileFunction, followSymlinkPredicate){
     var exists = fs.existsSync(root);
-    var stats = exists && fs.statSync(root); // we will treat symlinks as real things. Pray for no loops
+    var stats = exists && fs.lstatSync(root);
+    if (stats.isSymbolicLink()) {
+        var target = fs.readlinkSync(root);
+        if (followSymlinkPredicate && !followSymlinkPredicate(root, target)) return;
+        stats = fs.statSync(root); // follow the link
+    }
     var isDirectory = exists && stats.isDirectory();
     if (isDirectory) {
         fs.readdirSync(root).forEach(function(childItemName) {
-            applyToDeepPaths(path.join(root, childItemName), functor);
+            applyToDeepPaths(path.join(root, childItemName), fileFunction, followSymlinkPredicate);
         });
     } else if (exists) {
-        functor(root);
+        fileFunction(root);
     }
 }
 
@@ -196,11 +231,16 @@ function unpackCat(srcPack, targetPath) {
         var pathLen = ReadLength(cat, buf);
         if (pathLen == 0) {break;}
         var paths = ReadPaths(pathLen, cat, buf);
-
-        // read contents out to all the files at once.
-        // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
         var fileLen = ReadLength(cat, buf);
-        ReadToFiles(fileLen, paths, targetPath, cat, buf, hash);
+
+        if (fileLen == 0 && hash.toString('hex') == "00000000000000000000000000000000") { // is a symlink to be restored
+            if (paths.length != 2) { throw new Error('Malformed file: symbolic link did not have a single source and target'); }
+            fs.symlinkSync(/*target*/path.join(targetPath, paths[1]), /*source*/path.join(targetPath, paths[0]), 'dir');
+        } else { // is file data to be written to paths
+            // read contents out to all the files at once.
+            // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
+            ReadToFiles(fileLen, paths, targetPath, cat, buf, hash);
+        }
     }
     fs.close(cat);
     fs.unlinkSync(srcPack);

@@ -4,6 +4,7 @@
      * 
      * This gigantic mess is a cut down version of https://github.com/i-e-b/tinyQuickIO
      * Which enables handling of 32k length paths, where .Net is limited to ~250
+     * This copy can also handle symlinks
      * 
      */
 
@@ -32,9 +33,25 @@
         SeWmiguidObject = 0xb,
         SeRegistryWow6432Key = 0xc
     }
+    enum SymLinkFlag
+    {
+        File = 0,
+        Directory = 1
+    }
+    enum FileAttrFlags : uint {
+        INVALID_FILE_ATTRIBUTES = 0xffffffff,
+        FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+    }
 
     static class Win32SafeNativeMethods
     {
+        /// <summary>
+        /// Create a symlink to a fie or directory
+        /// </summary>
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        public static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, SymLinkFlag dwFlags);
+
         /// <summary>
         /// Create directory
         /// </summary>
@@ -1062,7 +1079,15 @@
         public static Boolean Exists(PathInfo pathInfo)
         {
             uint attributes = Win32SafeNativeMethods.GetFileAttributes(pathInfo.FullNameUnc);
-            return !Equals(attributes, 0xffffffff);
+            return !Equals(attributes, FileAttrFlags.INVALID_FILE_ATTRIBUTES);
+        }
+
+        /// <summary>
+        /// Returns true if the file or directory is a reparse point (hopefully a symlink and not a hardlink)
+        /// </summary>
+        public static Boolean IsSymLink(PathInfo pathInfo)
+        {
+            return (Win32SafeNativeMethods.GetFileAttributes(pathInfo.FullNameUnc) & (uint)FileAttrFlags.FILE_ATTRIBUTE_REPARSE_POINT) == (uint)FileAttrFlags.FILE_ATTRIBUTE_REPARSE_POINT;
         }
 
         /// <summary>
