@@ -34,9 +34,10 @@
         SeWmiguidObject = 0xb,
         SeRegistryWow6432Key = 0xc
     }
+    [Flags]
     enum FileAttrFlags : uint {
-        INVALID_FILE_ATTRIBUTES = 0xffffffff,
-        FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+        INVALID_FILE_ATTRIBUTES = 0xffffffffu,
+        FILE_ATTRIBUTE_REPARSE_POINT = 0x0400u
     }
 
     static class Win32SafeNativeMethods
@@ -1110,7 +1111,8 @@
         /// <param name="pathInfo">Path to check</param>
         public static Boolean Exists(PathInfo pathInfo)
         {
-            uint attributes = Win32SafeNativeMethods.GetFileAttributes(pathInfo.FullNameUnc);
+            var attributes = (FileAttrFlags)Win32SafeNativeMethods.GetFileAttributes(pathInfo.FullNameUnc);
+
             return !Equals(attributes, FileAttrFlags.INVALID_FILE_ATTRIBUTES);
         }
 

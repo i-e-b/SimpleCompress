@@ -1,8 +1,10 @@
 ﻿namespace SimpleCompress
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
     using System.IO.Compression;
+    using System.Linq;
     using System.Text;
 
     public static class Decompress
@@ -32,29 +34,54 @@
                     // get all target paths
                     long fileLength;
                     // <paths:utf8 str>
-                    var subPaths = ReadUtf8(fs, pathsLength).Split('|');
+                    var subPaths = ReadUtf8(fs, pathsLength).Split('|').Select(p => dstPath + p).ToArray();
                     // <length:8 bytes>
                     if (!ReadFileLength(fs, out fileLength)) throw new Exception("Malformed file: no length for data");
 
-                    // read source into first file
-                    var firstPath = dstPath+subPaths[0];
-                    PutFolder(firstPath);
-                    // <data:byte array>
-                    CopyLength(fs, firstPath, fileLength);
-                    if (subPaths.Length == 1) continue;
-
-                    // copy first file into all other locations
-                    var srcInfo = new PathInfo(firstPath);
-                    for (int i = 1; i < subPaths.Length; i++) {
-                        var thisPath = dstPath + subPaths[i];
-                        PutFolder(thisPath);
-                        if (!NativeIO.CopyFile(srcInfo, new PathInfo(thisPath))) throw new Exception("Failed to write "+ thisPath);
+                    if (fileLength == 0 && IsZero(fileHash))
+                    {
+                        if (subPaths.Length != 2) throw new Exception("Malformed file: symbolic link did not have a single source and target");
+                        NativeIO.SymbolicLink.CreateDirectoryLink(subPaths[0], subPaths[1]);
+                    }
+                    else
+                    {
+                        WriteFileToAllPaths(subPaths, fs, fileLength);
                     }
                 }
             }
 
             // cleanup temp file
             File.Delete(tmp);
+        }
+
+        static bool IsZero(IEnumerable<byte> fileHash)
+        {
+            return fileHash.All(b => b == 0);
+        }
+
+        static void WriteFileToAllPaths(IList<string> subPaths, Stream fs, long fileLength)
+        {
+            // read source into first file
+            var firstPath = subPaths[0];
+            PutFolder(firstPath);
+            // <data:byte array>
+            CopyLength(fs, firstPath, fileLength);
+            if (subPaths.Count == 1)
+            {
+                return;
+            }
+
+            // copy first file into all other locations
+            var srcInfo = new PathInfo(firstPath);
+            for (int i = 1; i < subPaths.Count; i++)
+            {
+                var thisPath = subPaths[i];
+                PutFolder(thisPath);
+                if (!NativeIO.CopyFile(srcInfo, new PathInfo(thisPath)))
+                {
+                    throw new Exception("Failed to write " + thisPath);
+                }
+            }
         }
 
         static void PutFolder(string path)

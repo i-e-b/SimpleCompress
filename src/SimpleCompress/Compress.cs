@@ -107,7 +107,7 @@
             }
 
             // Kill the temp file
-            //File.Delete(tmp);
+            File.Delete(tmp);
         }
 
         static bool IsSubpath(string srcPath, string symPath)
