@@ -4,7 +4,15 @@ An quick test of multi-file compression with long paths and many duplicate files
 The C# version specifically uses only standard GAC dependencies so it can be included in .msi installers.
 
 **Important** This tool does not keep track of file permissions, flags, creation dates or any other
-meta-data. It will lose execute flags and will replace sym-links will copies of files.
+meta-data. It will lose execute flags.
+
+Symlinks are supported for directories. If a link target is outside the archive, it will be dereferenced
+and expanded to a normal file. If the link target is within the archive, it will be restored as a link.
+
+The npm package can be installed as a library, or as a CLI tool "sz" with `npm i -g simple-compress`.
+Usage:
+    sz pack <src directory> <target file>
+    sz unpack <src file> <target directory>
 
 ### Internals
 
@@ -24,7 +32,7 @@ This temp file is then compressed to a single gzip stream as the final output (i
 
 Decompression:
 
-Reverse of compression -- first the gzip stream is expanded out to a temp file, then the structure is read to get a 
+Reverse of compression -- first the gzip stream is expanded out to a temp file, then the structure is read to get a
 list of paths. The data is then read to disk at first path in the list, then that result file is copied around to all
 the other locations. Each file when written can be compared to the archive's MD5 hash and an error displayed if there
 is any corruption.
