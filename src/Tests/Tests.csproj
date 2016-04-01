@@ -43,6 +43,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="compatibility_tests.cs" />
     <Compile Include="simple_tests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="symlink_tests.cs" />

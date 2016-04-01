@@ -5,6 +5,7 @@
     using System.IO;
     using System.IO.Compression;
     using System.Linq;
+    using System.Security.Cryptography;
     using System.Text;
 
     public static class Decompress
@@ -45,7 +46,7 @@
                     }
                     else
                     {
-                        WriteFileToAllPaths(subPaths, fs, fileLength);
+                        WriteFileToAllPaths(subPaths, fs, fileLength, fileHash);
                     }
                 }
             }
@@ -59,13 +60,13 @@
             return fileHash.All(b => b == 0);
         }
 
-        static void WriteFileToAllPaths(IList<string> subPaths, Stream fs, long fileLength)
+        static void WriteFileToAllPaths(IList<string> subPaths, Stream fs, long fileLength, IEnumerable<byte> expectedHash)
         {
             // read source into first file
             var firstPath = subPaths[0];
             PutFolder(firstPath);
             // <data:byte array>
-            CopyLength(fs, firstPath, fileLength);
+            CopyLength(fs, firstPath, fileLength, expectedHash);
             if (subPaths.Count == 1)
             {
                 return;
@@ -90,26 +91,40 @@
             if (pinfo.Parent != null) NativeIO.CreateDirectory(new PathInfo(path).Parent, recursive:true);
         }
 
-        static void CopyLength(Stream fs, string dstFilePath, long fileLength)
+        static void CopyLength(Stream fs, string dstFilePath, long fileLength, IEnumerable<byte> expectedHash)
         {
             const int bufSz = 65536;
             var remain = fileLength;
             var buffer = new byte[bufSz];
-            using (var fout = NativeIO.OpenFileStream(new PathInfo(dstFilePath), FileAccess.Write, FileMode.CreateNew)) {
+            using (var md5 = MD5.Create())
+            using (var fout = NativeIO.OpenFileStream(new PathInfo(dstFilePath), FileAccess.Write, FileMode.CreateNew))
+            {
                 int len;
-                while (remain > bufSz) {
+                while (remain > bufSz)
+                {
                     len = fs.Read(buffer, 0, bufSz);
                     if (len != bufSz) throw new Exception("Malformed file: data truncated");
+                    md5.TransformBlock(buffer, 0, len, null, 0);
                     fout.Write(buffer, 0, bufSz);
                     remain -= bufSz;
                 }
 
-                if (remain == 0) return;
+                if (remain != 0)
+                {
+                    len = fs.Read(buffer, 0, (int)remain);
+                    if (len != remain) throw new Exception("Malformed file: data truncated at end");
+                    md5.TransformBlock(buffer, 0, (int)remain, null, 0);
+                    fout.Write(buffer, 0, (int)remain);
+                }
 
-                len = fs.Read(buffer, 0, (int)remain);
-                if (len != remain) throw new Exception("Malformed file: data truncated at end");
-                fout.Write(buffer, 0, (int)remain);
+                md5.TransformFinalBlock(new byte[0], 0, 0);
+                if (!HashesEqual(expectedHash, md5.Hash)) { throw new Exception("Damaged archive: File at " + dstFilePath + " failed a checksum"); }
             }
+        }
+
+        static bool HashesEqual(IEnumerable<byte> expectedHash, IEnumerable<byte> hash)
+        {
+            return expectedHash.SequenceEqual(hash);
         }
 
         static string ReadUtf8(Stream fs, long pathsLength)

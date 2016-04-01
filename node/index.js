@@ -127,7 +127,7 @@ function Pack(src, dst) {
     unzip.on('finish', function unzipCallback(){
         if (inp.end) inp.end();
         if (out.end) out.end();
-        // TODO: temp -> fs.unlinkSync(temp);
+        fs.unlinkSync(temp);
         logStage('');
     });
 }
@@ -357,3 +357,4 @@ function correctFilepath(path) {
     if (isWin) return path.split('/').join('\\');
     else return path.split('\\').join('/');
 }
+
