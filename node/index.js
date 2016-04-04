@@ -15,18 +15,19 @@ module.exports = {
 
 function cli() {
     var args = process.argv.slice(2);
-    if (args.length != 3) { return ShowUsageAndExit(); }
+    if (args.length < 3) { return ShowUsageAndExit(); }
 
     var src = path.resolve(args[1]);
     var dst = path.resolve(args[2]);
+    var flags = readFlags(args[3] || "");
 
     switch (args[0]) {
         case "pack":
-            Pack(src, dst);
+            Pack(src, dst, flags);
             break;
 
         case "unpack":
-            Unpack(src, dst);
+            Unpack(src, dst, flags);
             break;
 
         default:
@@ -42,8 +43,17 @@ function ShowUsageAndExit() {
         ["Simple Compress",
             "    Usage:",
             "        sz pack <src directory> <target file>",
-            "        sz unpack <src file> <target directory>"].join(require('os').EOL)
+            "        sz unpack <src file> <target directory> [flags]",
+            "    Flags:",
+            "        h : replace duplicate files with hard links",
+        ""].join(require('os').EOL)
     );
+}
+
+function readFlags(str){
+    return {
+        LinkDups : (str.indexOf('h') >= 0)
+    };
 }
 
 var logStageWaiting = false;
@@ -55,7 +65,7 @@ function logStage(str) {
 }
 
 // recursively scan a directory and pack its contents into an archive
-function Pack(src, dst) {
+function Pack(src, dst, flags) {
     var temp = dst + '.tmp';
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
 
@@ -196,7 +206,7 @@ function fileHashSync(filename){
 }
 
 // expand an existing package file into a directory structure
-function Unpack(src, dst) {
+function Unpack(src, dst, flags) {
     var temp = src + '.tmp';
     // Unzip archive to temp location
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
@@ -212,7 +222,7 @@ function Unpack(src, dst) {
         if (out.end) out.end();
 
         logStage('unpacking files');
-        unpackCat(temp, dst);
+        unpackCat(temp, dst, flags);
         logStage('');
     });
 }
@@ -220,7 +230,7 @@ function Unpack(src, dst) {
 // then run this over the structure...
 // ToDo: see if this can be re-written as a single pipeline
 
-function unpackCat(srcPack, targetPath) {
+function unpackCat(srcPack, targetPath, flags) {
     var cat = fs.openSync(srcPack, 'r');
     var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
     var offset = 0;
@@ -239,7 +249,7 @@ function unpackCat(srcPack, targetPath) {
         } else { // is file data to be written to paths
             // read contents out to all the files at once.
             // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
-            ReadToFiles(fileLen, paths, targetPath, cat, buf, hash);
+            ReadToFiles(fileLen, paths, targetPath, cat, buf, hash, flags);
         }
     }
     fs.close(cat);
@@ -264,7 +274,7 @@ function ReadPaths(len, fd, buffer){
     return s.split('|');
 }
 
-function ReadToFiles(len, paths, target, fd, buffer, expectedHash){
+function ReadToFiles(len, paths, target, fd, buffer, expectedHash, flags){
     var remains = len;
 
     if (paths.length < 1) return;
@@ -303,18 +313,27 @@ function ReadToFiles(len, paths, target, fd, buffer, expectedHash){
         throw new Error('Damaged archive: File at '+paths[0]+' failed a checksum');
     }
 
-    // 2) copy original for all subsequent files. Unfortunately this is slow under nodejs
-    for (var i = 1; i < paths.length; i++){
-        var npath = path.join(target, paths[i]);
-        var dstFd = fs.openSync(npath, 'w');
-        var pos = 0;
-        while (pos < len) {
-            rlen = fs.readSync(masterFd, buffer, 0, buffer.length, pos);
-            if (rlen < 1) break;
-            pos += rlen;
-            fs.writeSync(dstFd, buffer, 0, rlen);
+    // copy or link all the subsequent duplicates (files only)
+    if (flags.LinkDups) {
+        // 2a) link to original for all subsequent files.
+        for (var i = 1; i < paths.length; i++){
+            var npath = path.join(target, paths[i]);
+            fs.linkSync(/*target*/masterPath, /*source*/npath);
         }
-        fs.close(dstFd);
+    } else {
+        // 2b) copy original for all subsequent files.
+        for (var i = 1; i < paths.length; i++){
+            var npath = path.join(target, paths[i]);
+            var dstFd = fs.openSync(npath, 'w');
+            var pos = 0;
+            while (pos < len) {
+                rlen = fs.readSync(masterFd, buffer, 0, buffer.length, pos);
+                if (rlen < 1) break;
+                pos += rlen;
+                fs.writeSync(dstFd, buffer, 0, rlen);
+            }
+            fs.close(dstFd);
+        }
     }
     fs.close(masterFd);
 }
