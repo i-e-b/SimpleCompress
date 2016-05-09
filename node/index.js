@@ -42,26 +42,20 @@ function ShowUsageAndExit() {
     console.log(
         ["Simple Compress",
             "    Usage:",
-            "        sz pack <src directory> <target file>",
+            "        sz pack <src directory> <target file> [flags]",
             "        sz unpack <src file> <target directory> [flags]",
             "    Flags:",
-            "        h : replace duplicate files with hard links",
+            "        h : (unpack) replace duplicate files with hard links",
+            "        x : (pack) create an expander script for the archive",
         ""].join(require('os').EOL)
     );
 }
 
 function readFlags(str){
     return {
-        LinkDups : (str.indexOf('h') >= 0)
+        LinkDups : (str.indexOf('h') >= 0),
+        Expander : (str.indexOf('x') >= 0)
     };
-}
-
-var logStageWaiting = false;
-function logStage(str) {
-    if (logStageWaiting) {console.timeEnd(' done');}
-    process.stdout.write(str);
-    console.time(' done');
-    logStageWaiting = true;
 }
 
 // recursively scan a directory and pack its contents into an archive
@@ -138,6 +132,7 @@ function Pack(src, dst, flags) {
         if (inp.end) inp.end();
         if (out.end) out.end();
         fs.unlinkSync(temp);
+        if (flags.Expander) WriteExpander(dst);
         logStage('');
     });
 }
@@ -205,6 +200,37 @@ function fileHashSync(filename){
     return sum.digest();
 }
 
+// Copy a subset of this code file into an expander script.
+function WriteExpander(packagePath) {
+    var relPath = './'+path.basename(packagePath);
+    var scriptPath = rewriteName(packagePath, 'expand', 'js');
+    var codes = fs.readFileSync(__filename, 'utf8');
+    var marker = ('/'.repeat(40)) + " [UNPACK] " + ('/'.repeat(40));
+    var idx = codes.indexOf(marker);
+
+    if (idx < 100) {
+        console.log("Could not create expander: source code damaged");
+        return;
+    }
+
+    // cut out packing code, add a call to unpack the named archive
+    // this is setup so the expansion is done in the current directory
+    // by default, or a named directory with a cmd arg
+    codes = codes.substring(idx) + "\nUnpack('"+relPath+"', process.argv[3] || '.', {});";
+
+    fs.writeFileSync(scriptPath, codes, 'utf8');
+}
+
+// rewrites 'path/to/old.thing.txt' to 'path/to/pre.old.thing.post'
+function rewriteName(old, pre, post) {
+    var newName = pre + '.' + path.basename(old, path.extname(old)) + '.' + post;
+    return path.join(path.dirname(old), newName);
+}
+
+
+// DO NOT change the line below, or the auto-expander will break:
+//////////////////////////////////////// [UNPACK] ////////////////////////////////////////
+
 // expand an existing package file into a directory structure
 function Unpack(src, dst, flags) {
     var temp = src + '.tmp';
@@ -228,8 +254,6 @@ function Unpack(src, dst, flags) {
 }
 
 // then run this over the structure...
-// ToDo: see if this can be re-written as a single pipeline
-
 function unpackCat(srcPack, targetPath, flags) {
     var cat = fs.openSync(srcPack, 'r');
     var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
@@ -243,7 +267,7 @@ function unpackCat(srcPack, targetPath, flags) {
         var paths = ReadPaths(pathLen, cat, buf);
         var fileLen = ReadLength(cat, buf);
 
-        if (fileLen == 0 && hash.toString('hex') == "00000000000000000000000000000000") { // is a symlink to be restored
+        if (fileLen == 0 && hash.toString('hex') == ("0".repeat(32))) { // is a symlink to be restored
             if (paths.length != 2) { throw new Error('Malformed file: symbolic link did not have a single source and target'); }
             fs.symlinkSync(/*target*/path.join(targetPath, paths[1]), /*source*/path.join(targetPath, paths[0]), 'dir');
         } else { // is file data to be written to paths
@@ -368,12 +392,18 @@ function ensureDirectory (p) {
     }
 }
 
-/**
- * The compression may have been done on a different os to the current one, so the paths may need to be corrected
- * @param path
- */
+// The compression may have been done on a different os to the current one, so the paths may need to be corrected
 function correctFilepath(path) {
     if (isWin) return path.split('/').join('\\');
     else return path.split('\\').join('/');
 }
 
+var logStageWaiting = false;
+function logStage(str) {
+    if (logStageWaiting) {console.timeEnd(' done');}
+    process.stdout.write(str);
+    console.time(' done');
+    logStageWaiting = true;
+}
+
+//////////////////////////////////////// [END] ////////////////////////////////////////
