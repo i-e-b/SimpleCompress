@@ -10,15 +10,20 @@ Symlinks are supported for directories. If a link target is outside the archive,
 and expanded to a normal file. If the link target is within the archive, it will be restored as a link.
 
 The npm package can be installed as a library, or as a CLI tool "sz" with `npm i -g simple-compress`.
-Usage:
-    sz pack <src directory> <target file>
-    sz unpack <src file> <target directory>
+
+    Usage:
+        sz pack <src directory> <target file> [flags]
+        sz unpack <src file> <target directory> [flags]
+
+    Flags:
+        h : (unpack) replace duplicate files with hard links
+        x : (pack) create an expander script for the archive
 
 ### Internals
 
 Filesystem / IO:
 
-Uses a cut down version of https://github.com/i-e-b/tinyQuickIO to handle long file paths in Windows.
+The .Net version uses a cut down version of https://github.com/i-e-b/tinyQuickIO to handle long file paths in Windows.
 The built in .Net IO namespace often fails with `node_modules` folders in large projects.
 Note that long file names are not currently supported for compressed and temp files.
 

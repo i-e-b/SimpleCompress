@@ -1,11 +1,15 @@
-// Node version of the .Net simple compress app
+// Node version of the simple compress app
+"use strict";
 
 var fs = require('fs');
 var zlib = require('zlib');
 var path = require('path');
-var crypto = require('crypto')
+var crypto = require('crypto');
 
 var isWin = /^win/.test(process.platform);
+
+//////////////////////////////////////// [CLI] ////////////////////////////////////////
+// DO NOT change the line above, or the auto-expander will break
 
 module.exports = {
     cli: cli,
@@ -35,8 +39,6 @@ function cli() {
             break;
     }
 }
-// end of main program
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function ShowUsageAndExit() {
     console.log(
@@ -57,6 +59,9 @@ function readFlags(str){
         Expander : (str.indexOf('x') >= 0)
     };
 }
+
+// DO NOT change the line below, or the auto-expander will break:
+//////////////////////////////////////// [PACK] ////////////////////////////////////////
 
 // recursively scan a directory and pack its contents into an archive
 function Pack(src, dst, flags) {
@@ -205,10 +210,12 @@ function WriteExpander(packagePath) {
     var relPath = './'+path.basename(packagePath);
     var scriptPath = rewriteName(packagePath, 'expand', 'js');
     var codes = fs.readFileSync(__filename, 'utf8');
-    var marker = ('/'.repeat(40)) + " [UNPACK] " + ('/'.repeat(40));
-    var idx = codes.indexOf(marker);
+    var unpackMark = ('/'.repeat(40)) + " [UNPACK] " + ('/'.repeat(40));
+    var cliMark = ('/'.repeat(40)) + " [CLI] " + ('/'.repeat(40));
+    var unpackIdx = codes.indexOf(unpackMark);
+    var cliIdx = codes.indexOf(cliMark);
 
-    if (idx < 100) {
+    if (unpackIdx < 1 || cliIdx < 1) {
         console.log("Could not create expander: source code damaged");
         return;
     }
@@ -216,9 +223,12 @@ function WriteExpander(packagePath) {
     // cut out packing code, add a call to unpack the named archive
     // this is setup so the expansion is done in the current directory
     // by default, or a named directory with a cmd arg
-    codes = codes.substring(idx) + "\nUnpack('"+relPath+"', process.argv[3] || '.', {});";
+    var unpackCode = codes.substring(0, cliIdx) +
+        codes.substring(unpackIdx) +
+        "\nvar loc = path.dirname(__filename);" +
+        "\nUnpack(path.join(loc, '"+relPath+"'), process.argv[2] || loc, {});";
 
-    fs.writeFileSync(scriptPath, codes, 'utf8');
+    fs.writeFileSync(scriptPath, unpackCode, 'utf8');
 }
 
 // rewrites 'path/to/old.thing.txt' to 'path/to/pre.old.thing.post'
@@ -369,7 +379,7 @@ function ReadLength(fd, buffer){
     return buffer.readIntLE(0, 8); // Node can only support 48 bits of precision, but the file uses 64 bits of data.
 }
 
-// node's file system support is shocking
+// create any missing directories for the given path
 function ensureDirectory (p) {
     p = path.resolve(p);
     try {
