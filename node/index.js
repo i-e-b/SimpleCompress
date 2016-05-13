@@ -5,6 +5,7 @@ var fs = require('fs');
 var zlib = require('zlib');
 var path = require('path');
 var crypto = require('crypto');
+var readline = require('readline');
 
 var isWin = /^win/.test(process.platform);
 
@@ -72,12 +73,22 @@ function Pack(src, dst, flags) {
     logStage('scanning for duplicates');
     var parts = {};
     var links = {};
+    var dupsFound = 0;
+    var total = 0;
     applyToDeepPaths(src, function eachFile (p){
         var hash = fileHashSync(p);
         var key = path.basename(p)+'|'+(hash.toString('base64'));
         var subs = p.replace(src,"");
-        if (parts[key]) parts[key].paths.push(subs);
-        else parts[key] = {paths : [subs], hash : hash};
+        total++;
+        if (parts[key]) {
+            parts[key].paths.push(subs);
+            dupsFound++;
+        } else {
+            parts[key] = {paths : [subs], hash : hash};
+        }
+
+        if (total % 10 == 0) updateProgress(' - ' + dupsFound + ' duplicates in '+total+' files');
+
     }, function shouldFollowSymlink(srcPath, targetPath){
         if (targetPath.indexOf(src) === 0) {
             // the link targets a path inside our source, write a link and return false (no follow)
@@ -258,13 +269,14 @@ function Unpack(src, dst, flags) {
         if (out.end) out.end();
 
         logStage('unpacking files');
-        unpackCat(temp, dst, flags);
+        var totalSize = fs.statSync(temp).size || 0;
+        unpackCat(temp, dst, totalSize, flags);
         logStage('');
     });
 }
 
 // then run this over the structure...
-function unpackCat(srcPack, targetPath, flags) {
+function unpackCat(srcPack, targetPath, totalSize, flags) {
     var cat = fs.openSync(srcPack, 'r');
     var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
     var offset = 0;
@@ -277,6 +289,10 @@ function unpackCat(srcPack, targetPath, flags) {
         var paths = ReadPaths(pathLen, cat, buf);
         var fileLen = ReadLength(cat, buf);
 
+        // calculate position for progress message:
+        offset += 16 + 8 + pathLen + 8 + fileLen;
+        var progressMsg = ' - '+(((offset / totalSize) * 100)|0)+'%';
+
         if (fileLen == 0 && hash.toString('hex') == ("0".repeat(32))) { // is a symlink to be restored
             if (paths.length != 2) { throw new Error('Malformed file: symbolic link did not have a single source and target'); }
             fs.symlinkSync(/*target*/path.join(targetPath, paths[1]), /*source*/path.join(targetPath, paths[0]), 'dir');
@@ -284,6 +300,7 @@ function unpackCat(srcPack, targetPath, flags) {
             // read contents out to all the files at once.
             // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
             ReadToFiles(fileLen, paths, targetPath, cat, buf, hash, flags);
+            updateProgress(progressMsg);
         }
     }
     fs.closeSync(cat);
@@ -410,10 +427,21 @@ function correctFilepath(path) {
 
 var logStageWaiting = false;
 function logStage(str) {
+    resetProgress();
     if (logStageWaiting) {console.timeEnd(' done');}
     process.stdout.write(str);
     console.time(' done');
     logStageWaiting = true;
+}
+
+var lastProgress = '';
+function resetProgress() {lastProgress = '';}
+function updateProgress(msg) {
+    if (msg == lastProgress) return;
+    readline.moveCursor(process.stdout, -(lastProgress.length), 0);
+    lastProgress = msg;
+    readline.clearLine(process.stdout, 1);
+    process.stdout.write(msg);
 }
 
 //////////////////////////////////////// [END] ////////////////////////////////////////
