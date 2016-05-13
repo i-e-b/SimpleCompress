@@ -286,7 +286,7 @@ function unpackCat(srcPack, targetPath, flags) {
             ReadToFiles(fileLen, paths, targetPath, cat, buf, hash, flags);
         }
     }
-    fs.close(cat);
+    fs.closeSync(cat);
     fs.unlinkSync(srcPack);
 }
 
@@ -366,10 +366,10 @@ function ReadToFiles(len, paths, target, fd, buffer, expectedHash, flags){
                 pos += rlen;
                 fs.writeSync(dstFd, buffer, 0, rlen);
             }
-            fs.close(dstFd);
+            fs.closeSync(dstFd);
         }
     }
-    fs.close(masterFd);
+    fs.closeSync(masterFd);
 }
 
 function ReadLength(fd, buffer){
