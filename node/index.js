@@ -8,6 +8,7 @@ var crypto = require('crypto');
 var readline = require('readline');
 
 var isWin = /^win/.test(process.platform);
+var noProgress = false;
 
 //////////////////////////////////////// [CLI] ////////////////////////////////////////
 // DO NOT change the line above, or the auto-expander will break
@@ -25,6 +26,8 @@ function cli() {
     var src = path.resolve(args[1]);
     var dst = path.resolve(args[2]);
     var flags = readFlags(args[3] || "");
+
+    noProgress = flags.NoProgress;
 
     switch (args[0]) {
         case "pack":
@@ -49,15 +52,17 @@ function ShowUsageAndExit() {
             "        sz unpack <src file> <target directory> [flags]",
             "    Flags:",
             "        h : (unpack) replace duplicate files with hard links",
-            "        x : (pack) create an expander script for the archive",
+            "        x : ( pack ) create an expander script for the archive",
+            "        n : ( both ) don't show progress messages",
         ""].join(require('os').EOL)
     );
 }
 
 function readFlags(str){
     return {
-        LinkDups : (str.indexOf('h') >= 0),
-        Expander : (str.indexOf('x') >= 0)
+        LinkDups   : (str.indexOf('h') >= 0),
+        Expander   : (str.indexOf('x') >= 0),
+        NoProgress : (str.indexOf('n') >= 0)
     };
 }
 
@@ -427,6 +432,7 @@ function correctFilepath(path) {
 
 var logStageWaiting = false;
 function logStage(str) {
+    if (noProgress) return;
     resetProgress();
     if (logStageWaiting) {console.timeEnd(' done');}
     process.stdout.write(str);
@@ -437,6 +443,7 @@ function logStage(str) {
 var lastProgress = '';
 function resetProgress() {lastProgress = '';}
 function updateProgress(msg) {
+    if (noProgress) return;
     if (msg == lastProgress) return;
     readline.moveCursor(process.stdout, -(lastProgress.length), 0);
     lastProgress = msg;
