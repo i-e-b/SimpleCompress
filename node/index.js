@@ -27,8 +27,6 @@ function cli() {
     var dst = path.resolve(args[2]);
     var flags = readFlags(args[3] || "");
 
-    noProgress = flags.NoProgress;
-
     switch (args[0]) {
         case "pack":
             Pack(src, dst, flags);
@@ -71,6 +69,7 @@ function readFlags(str){
 
 // recursively scan a directory and pack its contents into an archive
 function Pack(src, dst, flags) {
+    noProgress = flags.NoProgress;
     var temp = dst + '.tmp';
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
 
@@ -259,6 +258,7 @@ function rewriteName(old, pre, post) {
 
 // expand an existing package file into a directory structure
 function Unpack(src, dst, flags) {
+    noProgress = flags.NoProgress;
     var temp = src + '.tmp';
     // Unzip archive to temp location
     if (fs.existsSync(temp)) {fs.truncateSync(temp, 0);}
