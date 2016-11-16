@@ -1,6 +1,6 @@
 {
   "name": "simple-compress",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "A simple compression agent with Node and .Net clients",
   "main": "index.js",
   "bin": {"sz":"bin/sz"},

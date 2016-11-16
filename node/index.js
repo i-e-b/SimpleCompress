@@ -322,13 +322,22 @@ function unpackCat(srcPack, targetPath, totalSize, flags) {
     }
 
     // now place any symlinks
+    updateProgress('');
+    logStage('creating symlinks');
     for (var i = 0; i < linksToPlace.length; i++) {
+        var src = linksToPlace[i].source;
+        var dst = linksToPlace[i].target;
+        var progressMsg = ' - '+(((i / linksToPlace.length) * 100)|0)+'%';
+        updateProgress(progressMsg);
+
         try {
-            fs.symlinkSync(linksToPlace[i].target, linksToPlace[i].source, 'dir');
+            ensureDirectory(path.dirname(src));
+            fs.symlinkSync(dst, src, 'dir');
         } catch (err) {
-            throw new Error('Failed to place symlink from "'+linksToPlace[i].source+'" to "'+linksToPlace[i].target+'"');
+            throw new Error('Failed to place symlink from "'+src+'" to "'+dst+'"');
         }
     }
+    updateProgress('');
     fs.closeSync(cat);
     fs.unlinkSync(srcPack);
 }
