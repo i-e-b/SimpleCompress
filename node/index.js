@@ -162,17 +162,21 @@ function Pack(src, dst, flags) {
     });
 }
 
+// Use a global buffer to take some memory pressure off the GC.
+// This is to work around issues with multi-million pile directories.
+// Relies on the IO functions being synchronous.
+var gBuffer = new Buffer(5000000);
+
 function WriteLength(fd, length){
-    var b = new Buffer(8);
-    b.writeIntLE(length, 0, 8);
-    fs.writeSync(fd, b, 0, 8, null);
+    gBuffer.fill(0, 0, 10);
+    gBuffer.writeIntLE(length, 0, 8);
+    fs.writeSync(fd, gBuffer, 0, 8, null);
 }
 
 function WriteLinkMarker(fd){
     // 16 bytes of zeroes instead of MD5
-    var b = new Buffer(16);
-    b.fill(0);
-    fs.writeSync(fd, b, 0, 16, null);
+    gBuffer.fill(0, 0, 18);
+    fs.writeSync(fd, gBuffer, 0, 16, null);
 }
 
 function WriteBuffer(fd, buf, len) {
@@ -181,12 +185,11 @@ function WriteBuffer(fd, buf, len) {
 
 function WriteFileData(dst, fileToAdd){
     var src = fs.openSync(fileToAdd, 'r');
-    var buf = new Buffer(65536);
 
     for (;;){
-        var rlen = fs.readSync(src, buf, 0, buf.length, null);
+        var rlen = fs.readSync(src, gBuffer, 0, gBuffer.length, null);
         if (rlen < 1) break;
-        fs.writeSync(dst, buf, 0, rlen, null);
+        fs.writeSync(dst, gBuffer, 0, rlen, null);
     }
     fs.close(src);
 }
@@ -214,12 +217,11 @@ function applyToDeepPaths(root, fileFunction, followSymlinkPredicate){
 function fileHashSync(filename){
     var sum = crypto.createHash('md5');
     var fd = fs.openSync(filename, 'r');
-    var buf = new Buffer(65536);
 
     for (;;){
-        var rlen = fs.readSync(fd, buf, 0, buf.length, null);
+        var rlen = fs.readSync(fd, gBuffer, 0, gBuffer.length, null);
         if (rlen < 1) break;
-        sum.update(buf.slice(0, rlen));
+        sum.update(gBuffer.slice(0, rlen));
     }
     fs.close(fd);
     return sum.digest();
@@ -288,7 +290,7 @@ function Unpack(src, dst, flags) {
 // then run this over the structure...
 function unpackCat(srcPack, targetPath, totalSize, flags) {
     var cat = fs.openSync(srcPack, 'r');
-    var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
+    var buf = gBuffer;
     var offset = 0;
 
     var linksToPlace = [];
@@ -382,10 +384,10 @@ function ReadToFiles(len, paths, target, fd, buffer, expectedHash, flags){
     }
     var actualHash = sum.digest();
 
-    // Check the written data against the originam checksum
+    // Check the written data against the original checksum
     // We do this only once, because we're checking for errors in the package transit, not errors of the local system.
     if (actualHash.toString() !== expectedHash.toString()) {
-        throw new Error('Damaged archive: File at '+paths[0]+' failed a checksum');
+        throw new Error('Damaged archive: File at '+paths[0]+' failed a checksum: '+actualHash.toString('hex')+' -> '+expectedHash.toString('hex'));
     }
 
     // copy or link all the subsequent duplicates (files only)
