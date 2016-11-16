@@ -16,5 +16,7 @@ The npm package can be installed as a library, or as a CLI tool "sz" with `npm i
     Flags:
         h : (unpack) replace duplicate files with hard links
         x : ( pack ) create an expander script for the archive
+        f : ( pack ) never follow symlinks, even if they go outside of the archive
+        n : ( both ) don't show progress messages
 
 

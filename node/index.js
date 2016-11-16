@@ -291,6 +291,8 @@ function unpackCat(srcPack, targetPath, totalSize, flags) {
     var buf = new Buffer(5000000); // general purpose buffer. Gets overwritten by child functions
     var offset = 0;
 
+    var linksToPlace = [];
+
     for(;;){
         var hash = ReadHash(cat);
         if (hash == null) {break;}
@@ -305,12 +307,24 @@ function unpackCat(srcPack, targetPath, totalSize, flags) {
 
         if (fileLen == 0 && hash.toString('hex') == ("0".repeat(32))) { // is a symlink to be restored
             if (paths.length != 2) { throw new Error('Malformed file: symbolic link did not have a single source and target'); }
-            fs.symlinkSync(/*target*/path.join(targetPath, paths[1]), /*source*/path.join(targetPath, paths[0]), 'dir');
+            linksToPlace.push({
+                target:path.join(targetPath, paths[1]),
+                source:path.join(targetPath, paths[0])
+            });
         } else { // is file data to be written to paths
             // read contents out to all the files at once.
             // The .Net version does a write-then-copy, but Node.js has no OS-level copy.
             ReadToFiles(fileLen, paths, targetPath, cat, buf, hash, flags);
             updateProgress(progressMsg);
+        }
+    }
+
+    // now place any symlinks
+    for (var i = 0; i < linksToPlace.length; i++) {
+        try {
+            fs.symlinkSync(linksToPlace[i].target, linksToPlace[i].source, 'dir');
+        } catch (err) {
+            throw new Error('Failed to place symlink from "'+linksToPlace[i].source+'" to "'+linksToPlace[i].target'"');
         }
     }
     fs.closeSync(cat);
