@@ -324,7 +324,7 @@ function unpackCat(srcPack, targetPath, totalSize, flags) {
         try {
             fs.symlinkSync(linksToPlace[i].target, linksToPlace[i].source, 'dir');
         } catch (err) {
-            throw new Error('Failed to place symlink from "'+linksToPlace[i].source+'" to "'+linksToPlace[i].target'"');
+            throw new Error('Failed to place symlink from "'+linksToPlace[i].source+'" to "'+linksToPlace[i].target+'"');
         }
     }
     fs.closeSync(cat);
