@@ -51,6 +51,7 @@ function ShowUsageAndExit() {
             "    Flags:",
             "        h : (unpack) replace duplicate files with hard links",
             "        x : ( pack ) create an expander script for the archive",
+            "        f : ( pack ) never follow symlinks, even if they go outside of the archive",
             "        n : ( both ) don't show progress messages",
         ""].join(require('os').EOL)
     );
@@ -58,9 +59,10 @@ function ShowUsageAndExit() {
 
 function readFlags(str){
     return {
-        LinkDups   : (str.indexOf('h') >= 0),
-        Expander   : (str.indexOf('x') >= 0),
-        NoProgress : (str.indexOf('n') >= 0)
+        LinkDups       : (str.indexOf('h') >= 0),
+        Expander       : (str.indexOf('x') >= 0),
+        NoProgress     : (str.indexOf('n') >= 0),
+        IgnoreSymLinks : (str.indexOf('f') >= 0)
     };
 }
 
@@ -93,8 +95,11 @@ function Pack(src, dst, flags) {
 
         if (total % 10 == 0) updateProgress(' - ' + dupsFound + ' duplicates in '+total+' files');
 
-    }, function shouldFollowSymlink(srcPath, targetPath){
-        if (targetPath.indexOf(src) === 0) {
+    }, function shouldFollowSymlink(srcPath, targetPath) {
+        if (flags.IgnoreSymLinks) {
+            // Flag has been set to leave symlinks alone
+            return false;
+        } else if (targetPath.indexOf(src) === 0) {
             // the link targets a path inside our source, write a link and return false (no follow)
             links[srcPath.replace(src,"")] = targetPath.replace(src,"");
             return false;
