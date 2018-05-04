@@ -1,5 +1,5 @@
 # SimpleCompress
-Multi-file compression with long path support and good compression with many duplicate files
+Multi-file compression with long path support and good compression when source has many duplicate files
 
 The C# version specifically uses only standard GAC dependencies so it can be included in .msi installers.
 
