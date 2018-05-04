@@ -124,7 +124,7 @@
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     [BestFitMapping(false)]
-    public class Win32FindData
+    internal class Win32FindData
     {
         /// <summary>
         /// File Attributes
@@ -253,7 +253,7 @@
     /// Refer to http://msdn.microsoft.com/en-us/library/windows/hardware/ff552012%28v=vs.85%29.aspx
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
-    public struct SymbolicLinkReparseData
+    internal struct SymbolicLinkReparseData
     {
         private const int maxUnicodePathLength = 33000;
 
@@ -307,10 +307,11 @@
             base.Dispose(disposing);
         }
     }
+
     /// <summary>
     /// Performs operations for files or directories and path information. 
     /// </summary>
-    public static class PathTools
+    internal static class PathTools
     {
         public const String RegularLocalPathPrefix = @"";
         public const String RegularSharePathPrefix = @"\\";
@@ -711,7 +712,8 @@
             return true;
         }
     }
-    public class PathResult
+
+    internal class PathResult
     {
         /// <summary>
         /// Full root path
@@ -765,7 +767,7 @@
     /// <summary>
     /// Provides properties and instance method for paths
     /// </summary>
-    public sealed class PathInfo
+    internal sealed class PathInfo
     {
         /// <summary>
         /// Creates the path information container
@@ -881,31 +883,31 @@
 
     }
 
-    public enum LocalOrShare
+    internal enum LocalOrShare
     {
         Local,
         Share
     }
 
-    public enum UncOrRegular
+    internal enum UncOrRegular
     {
         Regular,
         UNC
     }
 
-    public enum FileOrDirectory
+    internal enum FileOrDirectory
     {
         File = 0,
         Directory = 1
     }
 
-    public enum SuppressExceptions
+    internal enum SuppressExceptions
     {
         None,
         SuppressAllExceptions
     }
     
-    public class FileDetail
+    internal class FileDetail
     {
         /// <summary>
         /// Creates the file information on the basis of the path and <see cref="Win32FindData"/>
@@ -966,7 +968,7 @@
     }
 
     [FileIOPermission(SecurityAction.Demand, AllFiles = FileIOPermissionAccess.AllAccess)]
-    public static class NativeIO
+    internal static class NativeIO
     {
         /// <summary>End of enumeration indicator in Win32</summary>
         public const Int32 ERROR_NO_MORE_FILES = 18;
@@ -1002,7 +1004,7 @@
         }
 
         /// <summary>
-        /// Creates a new directory. If <paramref name="recursive" /> is false, the parent directory must exists.
+        /// Creates a new directory. If <paramref name="recursive" /> is false, the parent directory must exist.
         /// </summary>
         /// <param name="pathInfo">
         /// Complete path to create

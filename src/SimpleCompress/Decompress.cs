@@ -8,8 +8,16 @@
     using System.Security.Cryptography;
     using System.Text;
 
+    /// <summary>
+    /// Root class for expanding a single archive to a directory
+    /// </summary>
     public static class Decompress
     {
+        /// <summary>
+        /// Expand an archive file to a directory
+        /// </summary>
+        /// <param name="srcFilePath">Full path to the archive file</param>
+        /// <param name="dstPath">Full path to the destination directory that will contain resulting file. This directory will be created if it doesn't exist.</param>
         public static void FromFileToFolder(string srcFilePath, string dstPath) { 
             // decompress to temp file, 
             // run through the stream, writing the data out to the first file, then copy to all duplicates

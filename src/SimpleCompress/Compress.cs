@@ -7,26 +7,16 @@
     using System.Security.Cryptography;
     using System.Text;
 
-    public class PathList
-    {
-        public List<string> Paths;
-        public byte[] HashData;
-
-        public PathList(byte[] hash, string fullName)
-        {
-            Paths = new List<string>();
-            Paths.Add(fullName);
-            HashData = hash;
-        }
-
-        public void Add(string fullName)
-        {
-            Paths.Add(fullName);
-        }
-    }
-
+    /// <summary>
+    /// Root class for compressing folders into single files
+    /// </summary>
     public static class Compress
     {
+        /// <summary>
+        /// Read all files under the source path into a single destination file.
+        /// </summary>
+        /// <param name="srcPath">Full path of source directory</param>
+        /// <param name="dstFilePath">Full path of destination file</param>
         public static void FolderToFile(string srcPath, string dstFilePath) {
             // list out name+hash -> [path]
             // write this to a single file

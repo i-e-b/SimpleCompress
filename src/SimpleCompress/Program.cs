@@ -2,6 +2,9 @@
 {
     using System;
 
+    /// <summary>
+    /// Execution point if running as a command line tool
+    /// </summary>
     public class Program
     {
 		static void Main(string[] args){

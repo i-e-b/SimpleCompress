@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{E78B9874-FAB2-4E93-9970-98307C7D1D0A}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SimpleCompress</RootNamespace>
     <AssemblyName>sc</AssemblyName>
@@ -21,6 +21,8 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <DocumentationFile>bin\Debug\sc.xml</DocumentationFile>
+    <WarningsAsErrors>CS1591;1591</WarningsAsErrors>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -30,6 +32,8 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <DocumentationFile>bin\Release\sc.xml</DocumentationFile>
+    <WarningsAsErrors>CS1591;1591</WarningsAsErrors>
   </PropertyGroup>
   <PropertyGroup>
     <StartupObject />
@@ -42,6 +46,7 @@
     <Compile Include="Compress.cs" />
     <Compile Include="Decompress.cs" />
     <Compile Include="NativeIO.cs" />
+    <Compile Include="PathList.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
