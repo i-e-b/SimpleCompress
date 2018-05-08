@@ -18,22 +18,29 @@
         /// </summary>
         /// <param name="srcFilePath">Full path to the archive file</param>
         /// <param name="dstPath">Full path to the destination directory that will contain resulting file. This directory will be created if it doesn't exist.</param>
-        public static void FromFileToFolder(string srcFilePath, string dstPath) { 
+        /// <param name="signingCertPath">Optional: Full path to a public key certificate file. If not supplied, any signatures are ignored</param>
+        public static void FromFileToFolder(string srcFilePath, string dstPath, string signingCertPath = null) {
             // decompress to temp file, 
             // run through the stream, writing the data out to the first file, then copy to all duplicates
 
             var tmp = srcFilePath + ".tmp";
 
-            // decompress file
-            if (File.Exists(tmp)) File.Delete(tmp);
-            using (var compressing = new GZipStream(File.OpenRead(srcFilePath), CompressionMode.Decompress))
-            using (var cat = File.OpenWrite(tmp))
+            // First check the file for a signature mark, and decompress contents
+            using (var archiveStream = File.OpenRead(srcFilePath))
             {
-                compressing.CopyTo(cat, 65536);
-                cat.Flush();
+                Crypto.TryVerify(archiveStream, signingCertPath);
+
+                // decompress file
+                if (File.Exists(tmp)) File.Delete(tmp);
+                using (var compressing = new GZipStream(File.OpenRead(srcFilePath), CompressionMode.Decompress))
+                using (var cat = File.OpenWrite(tmp))
+                {
+                    compressing.CopyTo(cat, 65536);
+                    cat.Flush();
+                }
             }
 
-            // scan the file
+            // Next, scan the file and copy data to paths
             using (var fs = File.OpenRead(tmp)) {
                 byte[] fileHash;
                 long pathsLength;
@@ -59,7 +66,7 @@
                 }
             }
 
-            // cleanup temp file
+            // Finally, cleanup temp file
             File.Delete(tmp);
         }
 

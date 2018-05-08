@@ -34,6 +34,7 @@ It works like a tar-gz: First all files are checked for duplicates
 Then a temp file is written that is of the structure `<MD5:16 bytes><length:8 bytes><paths:utf8 str><length:8 bytes><data:byte array>`
 repeated for each unique file. Lengths are 64 bit little endian. Paths are UTF-8. Data is as in the source file.
 This temp file is then compressed to a single gzip stream as the final output (it is **not** a .zip file)
+If a signature is added, the final format is `<"szX509":6 bytes><sig-length:8 bytes><signature:byte array><gzip-data:byte array>`
 
 Decompression:
 
@@ -41,4 +42,18 @@ Reverse of compression -- first the gzip stream is expanded out to a temp file, 
 list of paths. The data is then read to disk at first path in the list, then that result file is copied around to all
 the other locations. Each file when written can be compared to the archive's MD5 hash and an error displayed if there
 is any corruption.
+When a signed file is read, the signature header is read, and optionally checked. The remaining data follows the normal expansion process.
+If a signature `.cer` file is provided, the signature must match the data. If not signature file is provided, the check is skipped
+and the data can be expanded as normal.
 
+### Notes on signing
+
+Windows:
+
+Recipients should only ever get the public key (`MyKey.cer`). Simple compress does no checking against certificate revocation.
+Never use included demo keys for anything other than testing.
+
+```
+makecert.exe -sv MyKey.pvk -n “CN=MyProjName” MyKey.cer
+pvk2pfx.exe -pvk MyKey.pvk -spc MyKey.cer -pfx MyPFX.pfx -po your-password-here
+```

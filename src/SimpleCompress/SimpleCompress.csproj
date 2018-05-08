@@ -44,6 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Compress.cs" />
+    <Compile Include="Crypto.cs" />
     <Compile Include="Decompress.cs" />
     <Compile Include="NativeIO.cs" />
     <Compile Include="PathList.cs" />
