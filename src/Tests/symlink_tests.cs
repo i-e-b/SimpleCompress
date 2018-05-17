@@ -3,7 +3,7 @@
     using NUnit.Framework;
     using SimpleCompress;
 
-    [TestFixture]
+    [TestFixture, Explicit]
     public class symlink_tests
     {
         [Test]

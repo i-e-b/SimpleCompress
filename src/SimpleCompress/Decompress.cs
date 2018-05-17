@@ -25,23 +25,19 @@
 
             var tmp = srcFilePath + ".tmp";
 
-            // First check the file for a signature mark, and decompress contents
-            using (var archiveStream = File.OpenRead(srcFilePath))
+            // First decompress contents
+            if (File.Exists(tmp)) File.Delete(tmp);
+            using (var compressing = new GZipStream(File.OpenRead(srcFilePath), CompressionMode.Decompress))
+            using (var cat = File.Open(tmp, FileMode.Create, FileAccess.Write))
             {
-                Crypto.TryVerify(archiveStream, signingCertPath);
-
-                // decompress file
-                if (File.Exists(tmp)) File.Delete(tmp);
-                using (var compressing = new GZipStream(File.OpenRead(srcFilePath), CompressionMode.Decompress))
-                using (var cat = File.OpenWrite(tmp))
-                {
-                    compressing.CopyTo(cat, 65536);
-                    cat.Flush();
-                }
+                compressing.CopyTo(cat, 65536);
+                cat.Flush();
             }
 
             // Next, scan the file and copy data to paths
             using (var fs = File.OpenRead(tmp)) {
+                Crypto.TryVerify(fs, signingCertPath);
+
                 byte[] fileHash;
                 long pathsLength;
                 // <MD5:16 bytes><length:8 bytes>>

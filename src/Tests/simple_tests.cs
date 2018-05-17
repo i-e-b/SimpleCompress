@@ -4,7 +4,7 @@
     using NUnit.Framework;
     using SimpleCompress;
 
-    [TestFixture]
+    [TestFixture, Explicit]
     public class simple_tests
     {
         [Test]

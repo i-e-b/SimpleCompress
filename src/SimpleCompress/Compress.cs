@@ -17,12 +17,14 @@
         /// </summary>
         /// <param name="srcPath">Full path of source directory</param>
         /// <param name="dstFilePath">Full path of destination file</param>
-        public static void FolderToFile(string srcPath, string dstFilePath) {
+        /// <param name="signingCertPath">PFX file containing </param>
+        /// <param name="certPassword">password securing the pfx file</param>
+        public static void FolderToFile(string srcPath, string dstFilePath, string signingCertPath = null, string certPassword = null) {
             // list out name+hash -> [path]
             // write this to a single file
             // gzip that file
 
-            var tmp = dstFilePath+".tmp";
+            var tmpPath = dstFilePath+".tmp";
             var filePaths = new Dictionary<string, PathList>();
             var symLinks = new Dictionary<string, string>(); // link path -> target path
 
@@ -43,8 +45,8 @@
             }
 
             // pack everything into a temp file
-            if (File.Exists(tmp)) File.Delete(tmp);
-            using (var fs = File.OpenWrite(tmp))
+            if (File.Exists(tmpPath)) File.Delete(tmpPath);
+            using (var fs = File.OpenWrite(tmpPath))
             {
                 // Write data files
                 foreach (var fileKey in filePaths.Keys)
@@ -85,19 +87,44 @@
                     // Write <length:8 bytes>, always zero (there is not file content in a link)
                     WriteLength(0, fs);
                 }
+                fs.Flush();
+            }
+
+            // If cert, write to *another* temp file with the signing header in place
+            if ( ! string.IsNullOrWhiteSpace(signingCertPath)) {
+                var tmpSignPath = tmpPath + ".signed";
+                try
+                {
+                    using (var cat = File.OpenRead(tmpPath))
+                    {
+                        var signingBytes = Crypto.BuildSigningHeader(cat,signingCertPath, certPassword);
+                        cat.Seek(0, SeekOrigin.Begin);
+                        using (var final = File.Open(tmpSignPath, FileMode.Create, FileAccess.Write)) {
+                            final.Write(signingBytes, 0, signingBytes.Length);
+                            cat.CopyTo(final);
+                            final.Flush();
+                        }
+                    }
+
+                    File.Delete(tmpPath); // wipe the old one
+                    File.Move(tmpSignPath, tmpPath); // use the new one for compression
+                } catch (Exception ex) {
+                    Console.WriteLine("Signing failed: "+ex);
+                    throw;
+                }
             }
 
             // Compress the file
             if (File.Exists(dstFilePath)) File.Delete(dstFilePath);
             using (var compressing = new GZipStream(File.OpenWrite(dstFilePath), CompressionLevel.Optimal))
-            using (var cat = File.OpenRead(tmp))
+            using (var cat = File.OpenRead(tmpPath))
             {
                 cat.CopyTo(compressing, 65536);
                 compressing.Flush();
             }
 
             // Kill the temp file
-            File.Delete(tmp);
+            File.Delete(tmpPath);
         }
 
         static bool IsSubpath(string srcPath, string symPath)

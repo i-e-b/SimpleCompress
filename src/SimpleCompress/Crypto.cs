@@ -9,24 +9,24 @@ namespace SimpleCompress
 {
     internal static class Crypto
     {
-        public const string SignatureMarker = "szX509";
+        public const string SignatureMarker = "szX509"; // code below relies on this being 6 bytes of ASCII
 
-        public static byte[] SignData(X509Certificate2 publicKey, Stream stream)
+        public static byte[] SignData(X509Certificate2 key, Stream stream)
         {
-            var provider = (RSACryptoServiceProvider)publicKey.PublicKey.Key;
+            var provider = (RSACryptoServiceProvider)key.PrivateKey;
 
-            var hash = (HashAlgorithm) CryptoConfig.CreateFromName("SHA256");
+            var hash = (HashAlgorithm) CryptoConfig.CreateFromName("SHA1");
             var hashVal = hash.ComputeHash(stream);
-            return provider.SignHash(hashVal, "SHA256");
+            return provider.SignHash(hashVal, "SHA1");
         }
 
         public static bool VerifyData(X509Certificate2 publicKey, Stream stream, byte[] signature)
         {
             var provider = (RSACryptoServiceProvider)publicKey.PublicKey.Key;
 
-            var hash = (HashAlgorithm) CryptoConfig.CreateFromName("SHA256");
+            var hash = (HashAlgorithm) CryptoConfig.CreateFromName("SHA1");
             var hashVal = hash.ComputeHash(stream);
-            return provider.VerifyHash(hashVal, "SHA256", signature);
+            return provider.VerifyHash(hashVal, "SHA1", signature);
         }
         
 
@@ -55,10 +55,11 @@ namespace SimpleCompress
         /// If not signed, or data is valid, the file stream will be left at the start of the real data.
         /// </summary>
         /// <param name="archiveStream">File stream of archive</param>
-        /// <param name="signingCertPath"></param>
+        /// <param name="signingCertPath">Path to the public key cert that the package should match</param>
         public static void TryVerify(FileStream archiveStream, string signingCertPath)
         {
             if (! IsSigned(archiveStream)) {
+                if (!string.IsNullOrWhiteSpace(signingCertPath)) throw new SecurityException("Signature validation failed");
                 archiveStream.Position = 0;
                 return;
             }
@@ -71,12 +72,35 @@ namespace SimpleCompress
                 return;
             }
 
-            var key = LoadPublicKey(signingCertPath);
+            var key = LoadPublicKey(Path.GetFullPath(signingCertPath));
             var ok = VerifyData(key, archiveStream, signature);
 
             if (!ok) throw new SecurityException("Signature validation failed");
 
             archiveStream.Position = dataStartPos; // reset to data
+        }
+
+        /// <summary>
+        /// Create a full header with signature marker, length, and signed hash.
+        /// </summary>
+        /// <param name="rawFile">The file to be signed</param>
+        /// <param name="signingPfxPath">Full path the signing cert with private key</param>
+        /// <param name="password">password to private key</param>
+        public static byte[] BuildSigningHeader(FileStream rawFile, string signingPfxPath, string password) {
+            var key = LoadPrivateKey(Path.GetFullPath(signingPfxPath), password);
+            var hash = SignData(key, rawFile);
+            
+            var headerLength = 6 + 8 + hash.Length;
+            
+            using (var ms = new MemoryStream(headerLength)){
+                var marker = Encoding.ASCII.GetBytes(SignatureMarker);
+                var lenBytes = BitConverter.GetBytes((long)hash.Length);
+                ms.Write(marker, 0, 6);
+                ms.Write(lenBytes, 0, 8);
+                ms.Write(hash, 0, hash.Length);
+
+                return ms.ToArray();
+            }
         }
 
         private static int ReadSignature(Stream fs, out byte[] sigBytes)
