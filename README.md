@@ -50,8 +50,8 @@ and the data can be expanded as normal.
 
 Windows:
 
-Recipients should only ever get the public key (`MyKey.cer`). Simple compress does no checking against certificate revocation.
-Never use included demo keys for anything other than testing.
+Recipients should only ever get the public key (`*.cer`). Simple compress does no checking against certificate revocation.
+Never use included demo keys for anything other than running unit tests.
 
 ```
 makecert.exe -sv MyKey.pvk -n “CN=MyProjName” MyKey.cer

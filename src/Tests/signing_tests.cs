@@ -1,11 +1,10 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using NUnit.Framework;
 using SimpleCompress;
 
 namespace Tests
 {
-    [TestFixture]
+    [TestFixture, Explicit]
     public class signing_tests{
         [Test]
         public void can_sign_an_archive()
